@@ -31,8 +31,8 @@ Daemon::Daemon(const QDBusConnection &bus, const Options &options, QObject *pare
     : QObject(parent), m_bus(bus), m_options(options), m_config(options.configPath), m_profiles(&m_config),
       m_tools(Tools::detect(options.probeScope)), m_actions(m_tools), m_link(bus, options.bluezService) {
     m_actions.setDryRun(options.dryRunActions);
-    m_actions.setOmarchyResolver([this](const QString &description, const QString &combo) {
-        return lookupShortcut(description, combo);
+    m_actions.setOmarchyResolver([this](const QString &description, const QString &combo, bool loose) {
+        return lookupShortcut(description, combo, loose);
     });
     connect(&m_scan, &OmarchyScan::finished, this, &Daemon::onScanFinished);
     m_input.setBindingQuery([this](const QString &control, const QString &slot) {
@@ -318,9 +318,9 @@ void Daemon::ensureCatalog() {
     m_scanError = ok ? QString() : error;
 }
 
-OmarchyLookup Daemon::lookupShortcut(const QString &description, const QString &combo) {
+OmarchyLookup Daemon::lookupShortcut(const QString &description, const QString &combo, bool loose) {
     ensureCatalog();
-    OmarchyLookup found = m_catalog.find(description, combo);
+    OmarchyLookup found = m_catalog.find(description, combo, loose);
     if (found.status == OmarchyLookup::Status::NotFound && !m_scanError.isEmpty() && !m_catalog.loaded())
         found.message = QStringLiteral("cannot read the Omarchy shortcuts: %1").arg(m_scanError);
     return found;
@@ -333,8 +333,9 @@ void Daemon::checkLinks() {
     if (!m_catalog.loaded()) return;
     for (const auto &p : m_config.profiles())
         for (const auto &pg : p.toObject().value("pages").toArray())
-            for (const auto &c : pg.toObject().value("bindings").toObject())
-                for (auto s = c.toObject().begin(); s != c.toObject().end(); ++s) {
+            for (const auto &c : pg.toObject().value("bindings").toObject()) {
+                const QJsonObject slotMap = c.toObject();   // iterate one object, not two temporaries
+                for (auto s = slotMap.begin(); s != slotMap.end(); ++s) {
                     const QJsonObject a = s.value().toObject();
                     const bool legacy = a.value("type").toString() == "keys" && a.contains("omarchy");
                     if (a.value("type").toString() != "omarchy_bind" && !legacy) continue;
@@ -347,6 +348,7 @@ void Daemon::checkLinks() {
                     else if (found.status == OmarchyLookup::Status::Ambiguous)
                         m_warnings << found.message;
                 }
+            }
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +394,7 @@ QJsonObject Daemon::opBind(const QJsonObject &r) {
         // Resolve now so a typo, an ambiguous name or a bind that cannot be run fails at
         // bind time with a clear message, not silently when the dial is pressed.
         const QString wanted = action.contains("omarchy") ? action.value("omarchy").toString() : action.value("description").toString();
-        const OmarchyLookup found = lookupShortcut(wanted, action.value("combo").toString());
+        const OmarchyLookup found = lookupShortcut(wanted, action.value("combo").toString(), true);
         if (found.status != OmarchyLookup::Status::Found) return err(found.message);
         if (!found.bind.runnable)
             return err(QStringLiteral("\"%1\" (%2) cannot be bound: %3").arg(found.bind.description, found.bind.combo(), found.bind.reason));

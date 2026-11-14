@@ -5,6 +5,7 @@
 #include "bluezlink.h"
 #include "config.h"
 #include "daemon.h"
+#include "gui.h"
 #include "ipc.h"
 #include "omarchybinds.h"
 #include "shortcut.h"
@@ -31,6 +32,7 @@ QTextStream errs(stderr);
 
 const char *Usage = R"(dialstudio %1: Ulanzi D100H controller
 
+  dialstudio open                        open the window (needs the daemon for live data)
   dialstudio daemon                      run the headless daemon (systemd runs this)
   dialstudio status [--json]             device, battery, firmware, haptics, sleep, profile
   dialstudio events [--json]             stream decoded dial events
@@ -516,7 +518,7 @@ int Cli::run(const QStringList &argv) {
     if (command == "send") return cmdSend(a);
     if (command == "shortcuts") return cmdShortcuts(a);
     if (command == "learn") return cmdLearn(a);
-    if (command == "open") return fail("the GUI arrives in v0.1.5; for now use the CLI (dialstudio --help)");
+    if (command == "open") return Gui::run(Ipc::socketPath());
     errs << "dialstudio: unknown command '" << command << "'\n\n" << QString(Usage).arg(DIALSTUDIO_VERSION);
     return 2;
 }

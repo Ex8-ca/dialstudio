@@ -278,7 +278,7 @@ int OmarchyCatalog::runnableCount() const {
     return n;
 }
 
-OmarchyLookup OmarchyCatalog::find(const QString &description, const QString &combo) const {
+OmarchyLookup OmarchyCatalog::find(const QString &description, const QString &combo, bool loose) const {
     OmarchyLookup result;
     const QString wanted = description.trimmed();
     if (wanted.isEmpty()) { result.message = "no description given"; return result; }
@@ -291,7 +291,7 @@ OmarchyLookup OmarchyCatalog::find(const QString &description, const QString &co
     };
     QList<OmarchyBind> hits = collect([&](const QString &d) { return d == wanted; });
     if (hits.isEmpty()) hits = collect([&](const QString &d) { return d.compare(wanted, Qt::CaseInsensitive) == 0; });
-    if (hits.isEmpty()) {
+    if (hits.isEmpty() && loose) {
         // A unique substring is accepted so `--omarchy "volume up"` need not be exact, but
         // only when every hit has the same description (several chords for one action).
         const QList<OmarchyBind> partial = collect([&](const QString &d) { return d.contains(wanted, Qt::CaseInsensitive); });

@@ -43,7 +43,7 @@ public:
 
     // Looks an {"type":"omarchy_bind","description":...} link up in the Omarchy shortcut
     // catalog. The bind is then run (its command, or its Hyprland dispatch), never typed.
-    using OmarchyResolver = std::function<OmarchyLookup(const QString &description, const QString &combo)>;
+    using OmarchyResolver = std::function<OmarchyLookup(const QString &description, const QString &combo, bool loose)>;
     void setOmarchyResolver(OmarchyResolver resolver) { m_resolver = std::move(resolver); }
     // The argv that runs one Omarchy bind, or empty with *error set when it cannot run.
     QList<Command> buildOmarchyBind(const OmarchyBind &bind, int steps, QString *error) const;

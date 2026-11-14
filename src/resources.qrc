@@ -1,0 +1,18 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="Main.qml">Main.qml</file>
+        <file alias="Ui.qml">Ui.qml</file>
+        <file alias="qmldir">qmldir</file>
+        <file alias="ConnectionPill.qml">ConnectionPill.qml</file>
+        <file alias="BatteryBadge.qml">BatteryBadge.qml</file>
+        <file alias="DialKey.qml">DialKey.qml</file>
+        <file alias="DialView.qml">DialView.qml</file>
+        <file alias="Inspector.qml">Inspector.qml</file>
+        <file alias="ShortcutRecorder.qml">ShortcutRecorder.qml</file>
+        <file alias="ShortcutPicker.qml">ShortcutPicker.qml</file>
+        <file alias="assets/dial.svg">assets/dial.svg</file>
+        <file alias="assets/knob.svg">assets/knob.svg</file>
+        <file alias="i18n/en.json">i18n/en.json</file>
+        <file alias="i18n/da.json">i18n/da.json</file>
+    </qresource>
+</RCC>

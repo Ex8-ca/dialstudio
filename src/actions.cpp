@@ -240,7 +240,7 @@ QList<Command> Actions::build(const QJsonObject &a, int steps, QString *error) c
         else if (require("wtype")) out << Command{"wtype", {"-k", mediaKeysym(action)}, false};
     } else if (type == "omarchy_bind" || (type == "keys" && a.contains("omarchy"))) {
         const QString description = type == "keys" ? str(a, "omarchy") : str(a, "description");
-        const OmarchyLookup found = m_resolver ? m_resolver(description, str(a, "combo")) : OmarchyLookup();
+        const OmarchyLookup found = m_resolver ? m_resolver(description, str(a, "combo"), false) : OmarchyLookup();
         if (found.status != OmarchyLookup::Status::Found) {
             if (error) *error = found.message.isEmpty()
                                     ? QStringLiteral("Omarchy shortcut '%1' not found (it may have been removed from the Hyprland config)").arg(description)

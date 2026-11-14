@@ -64,7 +64,7 @@ private:
     void publish(const QJsonObject &event);
     void toast(const QString &title, const QString &body);
     void refreshActiveWindow();
-    OmarchyLookup lookupShortcut(const QString &description, const QString &combo);
+    OmarchyLookup lookupShortcut(const QString &description, const QString &combo, bool loose = false);
     void ensureCatalog();
     void onScanFinished(bool ok, const QList<OmarchyBind> &binds, const QString &error);
     void checkLinks();

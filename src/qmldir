@@ -1,0 +1,8 @@
+singleton Ui 1.0 Ui.qml
+ConnectionPill 1.0 ConnectionPill.qml
+BatteryBadge 1.0 BatteryBadge.qml
+DialKey 1.0 DialKey.qml
+DialView 1.0 DialView.qml
+Inspector 1.0 Inspector.qml
+ShortcutRecorder 1.0 ShortcutRecorder.qml
+ShortcutPicker 1.0 ShortcutPicker.qml

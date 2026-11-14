@@ -56,11 +56,13 @@ public:
     const QList<OmarchyBind> &binds() const { return m_binds; }
     int runnableCount() const;
 
-    // Finds a shortcut by description (exact, then case-insensitive, then a unique
-    // substring). `combo` picks between entries with the same description, and is
-    // ignored when none matches it (the user may have remapped the key since).
+    // Finds a shortcut by description (exact, then case-insensitive, then, only when
+    // `loose` is set, a unique substring). Loose matching is for typing a name at bind
+    // time; a stored link must resolve exactly, or a renamed shortcut would silently be
+    // replaced by a different one. `combo` picks between entries with the same
+    // description, and is ignored when none matches it (the key may have been remapped).
     // Entries that run the same thing count as one.
-    OmarchyLookup find(const QString &description, const QString &combo = {}) const;
+    OmarchyLookup find(const QString &description, const QString &combo = {}, bool loose = false) const;
     QJsonArray toJson() const;
 
 private:

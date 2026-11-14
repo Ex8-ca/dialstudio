@@ -142,10 +142,11 @@ private slots:
         c.set(scan("hyprland.lua"));
         QCOMPARE(c.find("Terminal").status, OmarchyLookup::Status::Found);
         QCOMPARE(c.find("terminal").bind.arg, QString("omarchy-launch-terminal"));      // case-insensitive
-        QCOMPARE(c.find("Volume").status, OmarchyLookup::Status::Found);                // unique substring
+        QCOMPARE(c.find("Volume", {}, true).status, OmarchyLookup::Status::Found);     // unique substring, bind time only
+        QCOMPARE(c.find("Volume").status, OmarchyLookup::Status::NotFound);            // stored links are exact
         QCOMPARE(c.find("Nope entirely").status, OmarchyLookup::Status::NotFound);
-        QCOMPARE(c.find("Switch to workspace").status, OmarchyLookup::Status::Ambiguous);
-        QVERIFY(c.find("Switch to workspace").message.contains("several"));
+        QCOMPARE(c.find("Switch to workspace", {}, true).status, OmarchyLookup::Status::Ambiguous);
+        QVERIFY(c.find("Switch to workspace", {}, true).message.contains("several"));
         QCOMPARE(c.find("").status, OmarchyLookup::Status::NotFound);
     }
 
@@ -225,7 +226,7 @@ private slots:
         OmarchyCatalog c;
         c.set(scan("hyprland.lua"));
         Actions a(tools({"hyprctl"}));
-        a.setOmarchyResolver([&c](const QString &d, const QString &combo) { return c.find(d, combo); });
+        a.setOmarchyResolver([&c](const QString &d, const QString &combo, bool loose) { return c.find(d, combo, loose); });
         QString e;
         const QJsonObject link{{"type", "omarchy_bind"}, {"description", "Terminal"}, {"combo", "SUPER + RETURN"}};
         QVERIFY(Actions::validate(link, &e));

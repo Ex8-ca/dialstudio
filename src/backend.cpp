@@ -88,6 +88,18 @@ Backend::Backend(const QString &socketPath, QObject *parent)
     connect(&m_socket, &QLocalSocket::errorOccurred, this, [this](QLocalSocket::LocalSocketError) {
         if (m_socket.state() == QLocalSocket::UnconnectedState && !m_reconnect.isActive()) m_reconnect.start();
     });
+    // A reply that races an early reconnect is dropped with its callback (onConnected clears
+    // m_pending). A profile, preset or app list that stays empty after connecting re-asks a
+    // few times, which also covers a daemon that only finishes loading its config later.
+    m_modelWatch.setInterval(700);
+    connect(&m_modelWatch, &QTimer::timeout, this, [this] {
+        if (!daemonRunning()) return;                       // retry when connected again
+        if (++m_modelRetries > 30) { m_modelWatch.stop(); return; }
+        if (m_profiles.isEmpty()) loadProfiles();
+        if (m_presets.isEmpty()) loadPresets();
+        if (m_apps.isEmpty()) loadApps();
+    });
+    connect(&m_socket, &QLocalSocket::connected, this, [this] { m_modelRetries = 0; m_modelWatch.start(); });
     connectNow();
     m_reconnect.start();
 }
@@ -117,6 +129,9 @@ void Backend::onConnected() {
     requestStatus();
     requestBindings();
     loadShortcuts();
+    loadProfiles();
+    loadApps();
+    loadPresets();
 }
 
 void Backend::onDisconnected() {
@@ -183,6 +198,8 @@ void Backend::onLine(const QJsonObject &line) {
         if (m_pendingSets == 0) requestBindings();
     } else if (event == "shortcuts") {
         loadShortcuts();
+    } else if (event == "config") {
+        loadProfiles();                  // a profile edit from another client or the CLI
     }
     if (event == "link" || event == "device" || event == "profile" || event == "config" || event == "shortcuts")
         scheduleStatus();
@@ -205,6 +222,8 @@ void Backend::applyStatus(const QJsonObject &s) {
     m_charging = battery.value("charging").toBool();
     m_firmware = s.value("device").toObject().value("firmware").toString();
     m_haptics = s.value("haptics").isNull() ? -1 : (s.value("haptics").toBool() ? 1 : 0);
+    const QJsonValue sleep = s.value("sleep_seconds");
+    m_sleep = sleep.isNull() ? -1 : sleep.toInt(-1);
     m_warnings.clear();
     for (const auto &w : s.value("warnings").toArray()) m_warnings << w.toString();
     const QString configError = s.value("config").toObject().value("error").toString();
@@ -417,6 +436,113 @@ void Backend::setHaptics(bool on) {
     });
 }
 
+void Backend::setSleep(int seconds) {
+    send({{"op", "set"}, {"what", "sleep"}, {"value", seconds}}, [this](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) showMessage(reply.value("error").toString(), true);
+        requestStatus();
+    });
+}
+
+void Backend::loadProfiles() {
+    send({{"op", "profiles_get"}}, [this](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) return;
+        m_profiles.clear();
+        for (const auto &p : reply.value("profiles").toArray()) m_profiles << p.toObject().toVariantMap();
+        m_activeProfile = reply.value("active").toString();
+        m_pinned = reply.value("pinned").toBool();
+        emit profilesChanged();
+    });
+}
+
+void Backend::saveProfiles(QVariantList list) {
+    QJsonArray array;
+    for (const QVariant &p : list) array.append(QJsonObject::fromVariantMap(p.toMap()));
+    send({{"op", "profiles_set"}, {"profiles", array}}, [this, list](const QJsonObject &reply) {
+        if (reply.value("ok").toBool()) {
+            emit profilesChanged();       // the daemon's copy is live
+            showMessage(tr("Saved."), false);
+            loadProfiles();
+            requestBindings();
+            return;
+        }
+        const QString error = reply.value("error").toString();
+        showMessage(error, true);
+        emit editFailed(error);
+        emit profilesChanged();           // QML restores its draft when loadProfiles() replaces it
+    });
+}
+
+void Backend::pinProfile(const QString &name) {
+    send({{"op", "profile"}, {"name", name}}, [this, name](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) { showMessage(reply.value("error").toString(), true); return; }
+        if (name == "auto") showMessage(tr("Profiles follow the focused window again."), false);
+        showMessage(tr("Profile: %1").arg(reply.value("profile").toString()), false);
+        loadProfiles();
+    });
+}
+
+void Backend::loadApps() {
+    send({{"op", "apps"}}, [this](const QJsonObject &reply) {
+        m_apps.clear();
+        if (reply.value("ok").toBool())
+            for (const auto &v : reply.value("apps").toArray()) m_apps << v.toObject().toVariantMap();
+        else
+            showMessage(reply.value("error").toString(), true);
+        emit appsChanged();
+    });
+}
+
+void Backend::loadClients() {
+    send({{"op", "clients"}}, [this](const QJsonObject &reply) {
+        m_clients.clear();
+        for (const auto &v : reply.value("clients").toArray()) m_clients << v.toObject().toVariantMap();
+        if (!reply.value("ok").toBool()) showMessage(reply.value("error").toString(), true);
+        emit clientsChanged();
+    });
+}
+
+void Backend::loadPresets() {
+    send({{"op", "presets"}, {"verb", "list"}}, [this](const QJsonObject &reply) {
+        m_presets.clear();
+        if (reply.value("ok").toBool())
+            for (const auto &v : reply.value("presets").toArray()) m_presets << v.toObject().toVariantMap();
+        emit presetsChanged();
+    });
+}
+
+void Backend::savePreset(const QString &name, bool overwrite) {
+    send({{"op", "presets"}, {"verb", "save"}, {"name", name}, {"overwrite", overwrite}},
+         [this](const QJsonObject &reply) {
+             if (!reply.value("ok").toBool()) { showMessage(reply.value("error").toString(), true); return; }
+             showMessage(tr("Preset saved."), false);
+             loadPresets();
+         });
+}
+
+void Backend::applyPreset(const QString &name) {
+    send({{"op", "presets"}, {"verb", "apply"}, {"name", name}}, [this](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) { showMessage(reply.value("error").toString(), true); return; }
+        showMessage(tr("Preset applied."), false);
+        loadProfiles();
+        requestBindings();
+        requestStatus();
+    });
+}
+
+void Backend::deletePreset(const QString &name) {
+    send({{"op", "presets"}, {"verb", "delete"}, {"name", name}}, [this](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) { showMessage(reply.value("error").toString(), true); return; }
+        loadPresets();
+    });
+}
+
+void Backend::renamePreset(const QString &from, const QString &to) {
+    send({{"op", "presets"}, {"verb", "rename"}, {"name", from}, {"to", to}}, [this](const QJsonObject &reply) {
+        if (!reply.value("ok").toBool()) { showMessage(reply.value("error").toString(), true); return; }
+        loadPresets();
+    });
+}
+
 void Backend::loadShortcuts() {
     send({{"op", "shortcuts"}}, [this](const QJsonObject &reply) {
         m_shortcuts.clear();
@@ -461,6 +587,9 @@ void Backend::refresh() {
     requestStatus();
     requestBindings();
     loadShortcuts();
+    loadProfiles();
+    loadApps();
+    loadPresets();
 }
 
 void Backend::showMessage(const QString &text, bool error) {

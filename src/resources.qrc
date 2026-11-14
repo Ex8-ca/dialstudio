@@ -8,6 +8,7 @@
         <file alias="DialKey.qml">DialKey.qml</file>
         <file alias="DialView.qml">DialView.qml</file>
         <file alias="Inspector.qml">Inspector.qml</file>
+        <file alias="ProfilesPane.qml">ProfilesPane.qml</file>
         <file alias="ShortcutRecorder.qml">ShortcutRecorder.qml</file>
         <file alias="ShortcutPicker.qml">ShortcutPicker.qml</file>
         <file alias="assets/dial.svg">assets/dial.svg</file>

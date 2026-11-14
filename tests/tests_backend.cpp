@@ -212,6 +212,85 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(r.backend->haptics(), 1, 4000);
     }
 
+    // ---- the M2 model: profiles, presets, apps, clients, sleep -------------------------
+
+    void sleepSecondsReachTheWindowAndSetIsApplied() {
+        Rig r;
+        QVERIFY(r.start());
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->sleepSeconds(), 7200, 4000);
+        r.backend->setSleep(3600);
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->sleepSeconds(), 3600, 4000);
+        r.backend->setSleep(7200);           // restore the dial's original sleep
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->sleepSeconds(), 7200, 4000);
+    }
+
+    void profilesModelLoadsAndSavesThroughTheDaemon() {
+        Rig r;
+        QVERIFY(r.start());
+        QTRY_VERIFY_WITH_TIMEOUT(r.backend->revision() > 0, 4000);
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->profiles().size(), 1, 4000);
+        const QVariantMap before = r.backend->profiles().first().toMap();
+        QCOMPARE(before.value("name").toString(), QString("Default"));
+        QCOMPARE(r.backend->activeProfile(), QString("Default"));
+        QVERIFY(!r.backend->pinned());
+
+        // Add a profile through the editor path: the whole list in one save.
+        QVariantMap extra{{"name", "Editor"}, {"match", QVariantMap{{"class", "^org\\.kde\\.kdenlive$"}}},
+                          {"pages", QVariantList{QVariantMap{{"name", "Edit"}, {"bindings", QVariantMap{}}}}}};
+        QVariantList list = r.backend->profiles();
+        list.append(extra);
+        r.backend->saveProfiles(list);
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->profiles().size(), 2, 4000);
+        QCOMPARE(r.backend->profiles().last().toMap().value("name").toString(), QString("Editor"));
+        // On disk too.
+        QFile f(r.dir.filePath("config.json"));
+        f.open(QIODevice::ReadOnly);
+        QCOMPARE(QJsonDocument::fromJson(f.readAll()).object().value("profiles").toArray().size(), 2);
+
+        // A list whose only fallback lost its "match": null is refused, and the model keeps
+        // the saved one.
+        QVariantList broken = r.backend->profiles();
+        QVariantMap noFallbackDefault = broken[0].toMap();
+        noFallbackDefault.insert("match", QVariantMap{{"class", "^nothing$"}});
+        broken[0] = noFallbackDefault;
+        QSignalSpy failed(r.backend.get(), &Backend::editFailed);
+        r.backend->saveProfiles(broken);
+        QTRY_COMPARE_WITH_TIMEOUT(failed.count(), 1, 4000);
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->profiles().size(), 2, 4000);
+    }
+
+    void presetsRoundtripThroughTheWindow() {
+        Rig r;
+        QVERIFY(r.start());
+        QTRY_VERIFY_WITH_TIMEOUT(r.backend->revision() > 0, 4000);
+        QVERIFY(r.backend->presets().isEmpty());
+        r.backend->savePreset("Stock", false);
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->presets().size(), 1, 4000);
+        QCOMPARE(r.backend->presets().first().toMap().value("name").toString(), QString("Stock"));
+        r.backend->savePreset("Stock", false);                       // refused: exists
+        QTRY_VERIFY_WITH_TIMEOUT(r.backend->message().contains("exists"), 3000);
+        r.backend->renamePreset("Stock", "Old");
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->presets().first().toMap().value("name").toString(), QString("Old"), 4000);
+        r.backend->deletePreset("Old");
+        QTRY_COMPARE_WITH_TIMEOUT(r.backend->presets().isEmpty(), true, 4000);
+    }
+
+    void clientsAndAppsFillTheirModels() {
+        Rig r;
+        QVERIFY(r.start());
+        // No real Hyprland in the tests: a bogus signature makes hyprctl fail deterministically.
+        qputenv("HYPRLAND_INSTANCE_SIGNATURE", "");
+        QTRY_VERIFY_WITH_TIMEOUT(r.backend->revision() > 0, 4000);
+        r.backend->loadClients();                        // hyprctl answers with an error here
+        QTest::qWait(300);
+        QVERIFY(r.backend->clients().isEmpty());
+        qunsetenv("HYPRLAND_INSTANCE_SIGNATURE");
+        r.backend->loadApps();                           // the real XDG dirs exist on this host
+        QTest::qWait(800);
+        QVERIFY(!r.backend->apps().isEmpty());
+        QVERIFY(r.backend->apps().first().toMap().value("name").toString().size() > 0);
+    }
+
     // ---- pure helpers -------------------------------------------------------------------
 
     void recordingTurnsKeyEventsIntoCombos() {

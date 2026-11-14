@@ -35,6 +35,14 @@ class Backend : public QObject {
     Q_PROPERTY(QString shortcutsError READ shortcutsError NOTIFY shortcutsChanged)
     Q_PROPERTY(bool serviceBusy READ serviceBusy NOTIFY serviceChanged)
 
+    Q_PROPERTY(QVariantList profiles READ profiles NOTIFY profilesChanged)
+    Q_PROPERTY(QString activeProfile READ activeProfile NOTIFY profilesChanged)
+    Q_PROPERTY(bool pinned READ pinned NOTIFY profilesChanged)
+    Q_PROPERTY(int sleepSeconds READ sleepSeconds NOTIFY stateChanged)      // -1 unknown
+    Q_PROPERTY(QVariantList apps READ apps NOTIFY appsChanged)              // .desktop app picker
+    Q_PROPERTY(QVariantList presets READ presets NOTIFY presetsChanged)
+    Q_PROPERTY(QVariantList clients READ clients NOTIFY clientsChanged)     // running Hyprland windows
+
 public:
     explicit Backend(const QString &socketPath = {}, QObject *parent = nullptr);
     ~Backend() override;
@@ -56,6 +64,27 @@ public:
     QVariantList shortcuts() const { return m_shortcuts; }
     QString shortcutsError() const { return m_shortcutsError; }
     bool serviceBusy() const;
+
+    // --- profiles, pages and presets --------------------------------------------------
+    QVariantList profiles() const { return m_profiles; }
+    QString activeProfile() const { return m_activeProfile; }
+    bool pinned() const { return m_pinned; }
+    int sleepSeconds() const { return m_sleep; }
+    QVariantList apps() const { return m_apps; }
+    QVariantList presets() const { return m_presets; }
+    QVariantList clients() const { return m_clients; }
+    // The whole profile list is one validated save; the daemon accepts or refuses it whole.
+    Q_INVOKABLE void loadProfiles();
+    Q_INVOKABLE void saveProfiles(QVariantList profiles);
+    Q_INVOKABLE void pinProfile(const QString &name);          // or "auto"
+    Q_INVOKABLE void loadApps();
+    Q_INVOKABLE void loadClients();
+    Q_INVOKABLE void loadPresets();
+    Q_INVOKABLE void savePreset(const QString &name, bool overwrite);
+    Q_INVOKABLE void applyPreset(const QString &name);
+    Q_INVOKABLE void deletePreset(const QString &name);
+    Q_INVOKABLE void renamePreset(const QString &from, const QString &to);
+    Q_INVOKABLE void setSleep(int seconds);
 
     // --- bindings model (current profile, page 0 until M2 adds pages) -----------------
     Q_INVOKABLE QVariantMap slotAction(const QString &control, const QString &slot) const;
@@ -93,6 +122,10 @@ signals:
     void historyChanged();
     void shortcutsChanged();
     void serviceChanged();
+    void profilesChanged();
+    void appsChanged();
+    void presetsChanged();
+    void clientsChanged();
     // A decoded dial event from the daemon's stream: kind is press, release, long_press,
     // click, rotate or press_rotate; direction is cw or ccw for the last two.
     void inputEvent(const QString &control, const QString &kind, const QString &direction, int steps);
@@ -120,7 +153,8 @@ private:
     QLocalSocket m_socket;
     QString m_path;
     QByteArray m_buffer;
-    QTimer m_reconnect, m_statusTimer, m_messageTimer;
+    QTimer m_reconnect, m_statusTimer, m_messageTimer, m_modelWatch;
+    int m_modelRetries = 0;
     bool m_ready = false;
     int m_nextId = 1;
     QHash<int, Callback> m_pending;
@@ -144,4 +178,9 @@ private:
     QVariantList m_shortcuts;
     QString m_shortcutsError;
     QProcess *m_service = nullptr;
+
+    QVariantList m_profiles, m_apps, m_presets, m_clients;
+    QString m_activeProfile;
+    bool m_pinned = false;
+    int m_sleep = -1;
 };

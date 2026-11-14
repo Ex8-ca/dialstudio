@@ -314,20 +314,40 @@ Rectangle {
         id: execForm
         ColumnLayout {
             spacing: 8
+            Label {
+                visible: !!root.draft.app
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: Ui.text
+                font.pixelSize: 13
+                text: qsTr("Opens %1").arg(root.draft.app || "")
+            }
+            ComboBox {
+                objectName: "appPicker"
+                Layout.fillWidth: true
+                model: backend.apps
+                textRole: "name"
+                font.pixelSize: 12
+                displayText: qsTr("Pick an installed app…")
+                Material.roundedScale: theme.radius
+                onActivated: (i) => root.change({ app: model[i].id, command: "" })
+                popup.onAboutToShow: backend.loadApps()
+            }
             TextField {
+                objectName: "execCommand"
                 Layout.fillWidth: true
                 placeholderText: qsTr("Command, e.g. foot -e htop")
                 text: root.draft.command || ""
                 selectByMouse: true
                 Material.roundedScale: theme.radius
-                onTextEdited: root.change({ command: text })
+                onTextEdited: root.change({ command: text, app: "" })
             }
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
                 color: Ui.muted
                 font.pixelSize: 11
-                text: qsTr("Started without a shell, detached from the service.")
+                text: qsTr("An app is launched through uwsm or gtk-launch by its .desktop id, detached from the service.")
             }
         }
     }

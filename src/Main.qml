@@ -21,6 +21,7 @@ ApplicationWindow {
     property string control: ""
     property string slot: ""
     property bool helpVisible: false
+    property bool profilesVisible: true
 
     function select(c, s) { control = c; slot = s }
 
@@ -66,6 +67,42 @@ ApplicationWindow {
                         font.pixelSize: 13
                     }
                     Item { Layout.fillWidth: true }
+                    // Sleep timer: the dial's own option list from Ulanzi Studio.
+                    Label { text: qsTr("Sleep"); color: Ui.muted; font.pixelSize: 13; visible: backend.sleepSeconds >= 0 }
+                    ComboBox {
+                        objectName: "sleepTimer"
+                        visible: backend.sleepSeconds >= 0
+                        font.pixelSize: 12
+                        model: [
+                            { v: 0,     t: qsTr("Never") },
+                            { v: 3600,  t: qsTr("1 hour") },
+                            { v: 7200,  t: qsTr("2 hours") },
+                            { v: 10800, t: qsTr("3 hours") },
+                            { v: 14400, t: qsTr("4 hours") }
+                        ]
+                        textRole: "t"
+                        currentIndex: {
+                            const values = [0, 3600, 7200, 10800, 14400]
+                            const p = backend.sleepSeconds
+                            for (let i = 0; i < values.length; ++i) if (values[i] === p) return i
+                            return -1
+                        }
+                        displayText: currentIndex >= 0 ? currentText : (backend.sleepSeconds >= 0 ? qsTr("%1 s").arg(backend.sleepSeconds) : "")
+                        Material.roundedScale: theme.radius
+                        Layout.preferredWidth: 120
+                        onActivated: (i) => backend.setSleep(model[i].v)
+                        Accessible.name: qsTr("Sleep timer")
+                    }
+                    ToolButton {
+                        id: profilesToggle
+                        text: qsTr("Profiles")
+                        font.pixelSize: 12
+                        checked: win.profilesVisible
+                        checkable: true
+                        onClicked: win.profilesVisible = !win.profilesVisible
+                        ToolTip.visible: hovered
+                        ToolTip.text: qsTr("Show or hide the profiles and presets")
+                    }
                     Label { text: qsTr("Haptics"); color: Ui.muted; font.pixelSize: 13; visible: backend.haptics >= 0 }
                     Switch {
                         id: hapticsSwitch
@@ -138,7 +175,14 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 Layout.margins: 20
-                spacing: 20
+                spacing: 16
+
+                ProfilesPane {
+                    id: profilesPane
+                    Layout.preferredWidth: 250
+                    Layout.fillHeight: true
+                    visible: win.profilesVisible && backend.daemonRunning
+                }
 
                 Item {
                     Layout.fillWidth: true

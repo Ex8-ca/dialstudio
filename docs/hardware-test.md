@@ -3,7 +3,30 @@
 Only things that ran on the real dial or the real desktop are marked as verified. Everything else
 is covered by the fake-BlueZ tests only, or not tested.
 
-## v0.1.0 (2026-11-14)
+## v0.1.0 hardware run on the real dial (2026-11-14, with Marc present)
+
+Run against a throwaway config; the user's real config was not touched.
+
+| Check | Result |
+|---|---|
+| Daemon reaches `online`; `status` shows firmware 1.3.8.1, battery 100% | verified |
+| Heartbeat holds online mode | verified |
+| Haptics write: off, read back off, restored to on | verified |
+| Sleep write: 3600 s, read back, restored to 7200 s | verified |
+| key1..key7 press/release events (key mapping matches the plan) | verified |
+| Knob click, rotate cw/ccw (steps=1 per detent) | verified |
+| Press-rotate cw/ccw, no knob click on release | verified |
+| Factory volume returns after daemon stops (user confirmed) | verified, delay not timed |
+| Profile match on focused window class; bound key fired a command | verified (HermesApp profile) |
+| Reconnect after dial power cycle; keys work again without a daemon restart | verified; recovery time NOT measured, the 30 s target is unproven |
+
+Side effects seen: with the default config a knob click mutes system audio, and each detent moves
+the volume 2%.
+
+Still untested: write-without-request fallback, `learn` interactively, install.sh end to end,
+`bind --omarchy` triggering the Hyprland bind (see the open point above).
+
+## v0.1.0 (2026-11-14), earlier run without a dial
 
 ### Dial availability
 

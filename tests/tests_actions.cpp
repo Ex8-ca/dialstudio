@@ -73,19 +73,6 @@ private slots:
         auto targeted = a.build(obj("{'type':'keys','combo':'super+1','via':'hypr','window':'class:^firefox$'}"), 1, &e);
         QCOMPARE(argv(targeted[0]).last(), QString("hl.dsp.send_shortcut({ mods = \"SUPER\", key = \"1\", window = \"class:^firefox$\" })"));
     }
-    void omarchyLinkResolvesByDescriptionAndFallsBackToCachedCombo() {
-        Actions a(tools({"hyprctl"}));
-        QString e;
-        a.setShortcutResolver([](const QJsonObject &l) { return l.value("omarchy").toString() == "Volume up" ? QString("XF86AudioRaiseVolume") : QString(); });
-        auto found = a.build(obj("{'type':'keys','omarchy':'Volume up','combo':'ctrl+x','via':'hypr'}"), 1, &e);
-        QVERIFY2(!found.isEmpty(), qPrintable(e));
-        QCOMPARE(argv(found[0]).last(), QString("hl.dsp.send_shortcut({ mods = \"\", key = \"XF86AudioRaiseVolume\" })"));
-        auto cached = a.build(obj("{'type':'keys','omarchy':'Gone','combo':'ctrl+q','via':'hypr'}"), 1, &e);
-        QVERIFY2(!cached.isEmpty(), qPrintable(e));
-        QCOMPARE(argv(cached[0]).last(), QString("hl.dsp.send_shortcut({ mods = \"CTRL\", key = \"q\" })"));
-        QVERIFY(a.build(obj("{'type':'keys','omarchy':'Gone','via':'hypr'}"), 1, &e).isEmpty());
-        QVERIFY(e.contains("not found"));
-    }
     void text() {
         Actions a(tools({"wtype"}));
         QString e;

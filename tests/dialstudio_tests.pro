@@ -9,4 +9,6 @@ include(../src/src.pri)
 HEADERS += fakebluez.h testmain.h
 SOURCES += tests_main.cpp fakebluez.cpp \
     tests_protocol.cpp tests_inputstate.cpp tests_config.cpp tests_actions.cpp \
-    tests_profiles.cpp tests_bluezlink.cpp tests_daemon.cpp
+    tests_profiles.cpp tests_bluezlink.cpp tests_daemon.cpp tests_omarchybinds.cpp
+
+DEFINES += FIXTURE_DIR=\\\"$$PWD/fixtures\\\"

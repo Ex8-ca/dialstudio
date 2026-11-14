@@ -7,6 +7,7 @@ import QtQuick.Layouts
 // selected control. Edits are saved as soon as the draft is valid.
 Rectangle {
     id: root
+    objectName: "inspector"
     property string control: ""
     property string slot: ""
     signal slotSelected(string slot)
@@ -43,6 +44,8 @@ Rectangle {
         for (let i = 0; i < types.length; ++i) if (types[i].value === type) return i
         return -1
     }
+    // A refused edit (service offline, invalid action) must not leave its draft on screen.
+    Connections { target: backend; function onEditFailed() { root.reload() } }
     onControlChanged: reload()
     onSlotChanged: reload()
     onRevChanged: { if (!inEdit) reload() }
@@ -97,21 +100,44 @@ Rectangle {
                     color: Ui.text
                 }
 
-                // Slot picker: press / long press for keys, five gestures for the knob.
-                Flow {
+                // Slot picker: press / long press for keys, five gestures for the knob. One per
+                // row so long names never wrap unevenly; the bound ones show their action.
+                ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: 2
                     Repeater {
                         model: root.control === "" ? [] : backend.slotsOf(root.control).filter(s => s !== "release")
                         delegate: Button {
                             required property string modelData
-                            text: backend.slotTitle(root.control, modelData)
+                            Layout.fillWidth: true
                             checkable: true
                             checked: root.slot === modelData
-                            flat: !checked
                             font.pixelSize: 12
                             Material.roundedScale: theme.radius
-                            Accessible.name: text
+                            Accessible.name: backend.slotTitle(root.control, modelData)
+                            // Drawn here so the selected row is a solid accent fill with readable text,
+                            // whatever the theme's accent is.
+                            background: Rectangle {
+                                radius: Math.min(6, theme.radius)
+                                color: parent.checked ? theme.accent : (parent.hovered ? Ui.panelHigh : "transparent")
+                            }
+                            contentItem: RowLayout {
+                                spacing: 8
+                                Label {
+                                    text: backend.slotTitle(root.control, modelData)
+                                    color: parent.parent.checked ? theme.accentForeground : Ui.text
+                                    font.pixelSize: 12
+                                    elide: Text.ElideRight
+                                    Layout.fillWidth: true
+                                }
+                                Label {
+                                    text: { root.rev; const l = backend.slotLabel(root.control, modelData); return l.length ? l : "—" }
+                                    color: parent.parent.checked ? theme.accentForeground : Ui.muted
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    Layout.maximumWidth: 140
+                                }
+                            }
                             onClicked: root.slotSelected(modelData)
                         }
                     }
@@ -120,6 +146,7 @@ Rectangle {
                 Label { text: qsTr("Action"); color: Ui.muted; font.pixelSize: 12 }
                 ComboBox {
                     id: typeBox
+                    objectName: "typeBox"
                     Layout.fillWidth: true
                     model: root.types
                     textRole: "text"

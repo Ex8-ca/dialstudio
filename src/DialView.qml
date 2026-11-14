@@ -33,14 +33,14 @@ Item {
 
     Item {
         id: stage
-        width: 480; height: 400
+        width: 480; height: 440
         anchors.centerIn: parent
-        scale: Math.min(root.width / width, root.height / height)
+        scale: Math.min(root.width / width, root.height / height, 1.6)
 
         Image {
             anchors.fill: parent
             source: "assets/dial.svg"
-            sourceSize: Qt.size(960, 800)
+            sourceSize: Qt.size(960, 880)
             smooth: true
         }
 
@@ -136,7 +136,7 @@ Item {
             ]
             delegate: Rectangle {
                 required property var modelData
-                x: modelData.x; y: 338; width: 98; height: 26
+                x: modelData.x; y: 386; width: 98; height: 28
                 radius: 6
                 color: chipMouse.containsMouse ? "#2b2b33" : "#1c1c22"
                 border.width: root.control === "knob" && root.slot === modelData.slot ? 2 : 1

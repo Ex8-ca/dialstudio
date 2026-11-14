@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Dial Studio
+Name[da]=Dial Studio
 Comment=Configure the Ulanzi D100H dial
+Comment[da]=Indstil Ulanzi D100H-dialen
 Exec=dialstudio open
 Icon=dialstudio
 Terminal=false

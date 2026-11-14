@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 400" width="480" height="400">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 440" width="480" height="440">
   <!-- Original top-down drawing of a 3 + 4 key dial with one knob. Not a copy of any product artwork. -->
   <defs>
     <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
@@ -14,8 +14,8 @@
       <stop offset="1" stop-color="#0d0d10"/>
     </radialGradient>
   </defs>
-  <rect x="10" y="6" width="460" height="388" rx="34" fill="#08080a"/>
-  <rect x="12" y="8" width="456" height="384" rx="32" fill="url(#body)" stroke="#3a3a42" stroke-width="2"/>
+  <rect x="10" y="6" width="460" height="428" rx="34" fill="#08080a"/>
+  <rect x="12" y="8" width="456" height="424" rx="32" fill="url(#body)" stroke="#3a3a42" stroke-width="2"/>
   <!-- key wells: top row -->
   <rect x="66" y="30" width="108" height="92" rx="14" fill="url(#well)" stroke="#34343c" stroke-width="2"/>
   <rect x="186" y="30" width="108" height="92" rx="14" fill="url(#well)" stroke="#34343c" stroke-width="2"/>
@@ -39,6 +39,6 @@
   <!-- quiet corner screws -->
   <g fill="#15151a" stroke="#3a3a42" stroke-width="1.5">
     <circle cx="40" cy="26" r="5"/><circle cx="440" cy="26" r="5"/>
-    <circle cx="40" cy="374" r="5"/><circle cx="440" cy="374" r="5"/>
+    <circle cx="40" cy="414" r="5"/><circle cx="440" cy="414" r="5"/>
   </g>
 </svg>

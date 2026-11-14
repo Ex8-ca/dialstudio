@@ -9,7 +9,7 @@ QtObject {
     readonly property color panelHigh: "#1f1f25"
     readonly property color border: "#2c2c34"
     readonly property color text: "#ececf1"
-    readonly property color muted: "#9a9aa6"
+    readonly property color muted: "#a9a9b6"
     readonly property color ok: "#4cc38a"
     readonly property color warn: "#e5a73b"
     readonly property color bad: "#e5605a"

@@ -54,6 +54,7 @@ ColumnLayout {
         }
         Button {
             id: recordButton
+            objectName: "recordButton"
             text: root.recording ? qsTr("Cancel") : qsTr("Record")
             flat: !root.recording
             Material.roundedScale: theme.radius
@@ -65,6 +66,9 @@ ColumnLayout {
     Item {
         id: capture
         focus: false
+        // While recording, every key is data: without this the window's own Ctrl+Z / Ctrl+Shift+Z / Q
+        // shortcuts would fire instead of being recorded.
+        Keys.onShortcutOverride: (event) => { if (root.recording) event.accepted = true }
         Keys.onPressed: (event) => {
             if (!root.recording) return
             event.accepted = true

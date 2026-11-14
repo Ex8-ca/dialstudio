@@ -5,6 +5,7 @@ import QtQuick.Layouts
 
 ApplicationWindow {
     id: win
+    objectName: "window"
     width: 1180
     height: 740
     minimumWidth: 900
@@ -26,10 +27,10 @@ ApplicationWindow {
     // Every action shortcut is an ApplicationShortcut, except the single-letter ones, which
     // must not fire while a text field has the focus.
     readonly property bool typing: win.activeFocusItem !== null && win.activeFocusItem instanceof TextInput
-    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequences: ["?", "Shift+?", "Shift+/"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: Qt.quit() }
-    Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
-    Shortcut { sequences: ["Ctrl+Shift+Z", StandardKey.Redo]; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
+    Shortcut { sequences: ["Ctrl+Z"]; context: Qt.ApplicationShortcut; onActivated: backend.undo() }
+    Shortcut { sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]; context: Qt.ApplicationShortcut; onActivated: backend.redo() }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
     Shortcut { sequence: "Ctrl+R"; context: Qt.ApplicationShortcut; onActivated: backend.refresh() }
 

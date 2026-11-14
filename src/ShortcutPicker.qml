@@ -14,6 +14,7 @@ ColumnLayout {
 
     TextField {
         id: search
+        objectName: "shortcutSearch"
         Layout.fillWidth: true
         placeholderText: qsTr("Search Omarchy shortcuts")
         selectByMouse: true

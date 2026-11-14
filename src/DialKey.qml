@@ -5,6 +5,7 @@ import QtQuick.Controls.Material
 // One key of the dial drawing: clickable, shows what it does, lights up on a real press.
 Item {
     id: key
+    objectName: control
     property string control
     property int number: 0
     property string label: ""
@@ -46,15 +47,21 @@ Item {
             opacity: 0.85
         }
         Label {
+            id: caption
             anchors.centerIn: parent
-            width: parent.width - 14
+            width: parent.width - 12
+            height: parent.height - (key.longLabel.length > 0 ? 36 : 28)
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            text: key.label.length ? key.label : qsTr("Not bound")
-            wrapMode: Text.Wrap
-            maximumLineCount: 3
-            elide: Text.ElideRight
-            font.pixelSize: key.label.length > 14 ? 12 : 14
+            // Lines are broken here, at spaces and (for long chords) after "+", and the font
+            // then shrinks until the widest line fits. Letting the text engine wrap would split
+            // a word such as "Terminal" in the middle on the narrow side keys.
+            text: key.label.length ? key.label.replace(/ /g, "\n").replace(key.label.length > 9 ? /\+/g : /$^/, "+\n") : qsTr("Not bound")
+            wrapMode: Text.NoWrap
+            elide: Text.ElideNone
+            font.pixelSize: 14
+            minimumPixelSize: 8
+            fontSizeMode: Text.Fit
             font.weight: Font.DemiBold
             color: key.glow > 0.5 ? theme.accentForeground : (key.label.length ? Ui.text : Ui.muted)
         }

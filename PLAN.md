@@ -459,6 +459,16 @@ Acceptance, on the real dial:
 4. `dialstudio set haptics off` gets read back as off from `status`.
 5. Focusing a window matched by a profile switches bindings; `status` shows it.
 
+**M1.5 / v0.1.5: first window (visual interface early).**
+Build the GUI skeleton right after the daemon works, so you can see and click
+things before the full editor exists: `Main.qml` with `DialView` (the SVG dial,
+live key flash and knob rotation from the daemon's event stream), the header
+pill (connection, battery, firmware), and a minimal inspector with the
+shortcut Record button and the Omarchy-shortcut picker (§5a). Acceptance: open
+`dialstudio open`, press a real key and see it light up; click key4, record
+`ctrl+shift+z`, press the key and the shortcut fires. M2 then adds profiles,
+pages, the full action library, presets and polish.
+
 **M2 / v0.2.0: GUI editor.**
 Everything in §6. Done when Marc can bind key4 to `hyprctl dispatch workspace +1`
 from the GUI with no JSON hand-editing, see it flash live, and survive a theme
@@ -528,7 +538,35 @@ afterwards. Only ship it if it's verified on hardware.
 10. Commit messages are short and imperative. Make separate commits for docs,
     structure and tests.
 
+## 10a. Ideas adopted from racerxdl/ulanzi-d200-linux (D200 USB deck, Python + web UI)
+
+Not protocol-relevant (different device and transport), but its product design
+is worth copying:
+
+- **"Open application" picker.** List visible `.desktop` entries from XDG dirs
+  (`/usr/share/applications`, `~/.local/share/applications`, Flatpak exports),
+  with localized names. Store the stable `.desktop` ID, not a command string.
+  Launch with `gtk-launch <id>` or `uwsm-app -- <id>` so Exec arguments and
+  field codes are handled. Show the app's icon on the key in the dial view.
+- **Detach launched apps from the daemon.** Run `exec`/`app` actions with
+  `systemd-run --user --scope --collect -- ...`, so restarting dialstudio
+  (or a service upgrade) doesn't kill the apps a button opened. Fall back to
+  `startDetached` if `systemd-run` fails.
+- **Saved layouts / presets.** Named profile snapshots in
+  `~/.config/dialstudio/presets/*.json` with Save / Load / Delete in the GUI.
+  Loading only opens the preset in the editor; "Apply" makes it active.
+- **Default config is self-contained** and creates itself atomically on first
+  start without overwriting an existing file (already in §4).
+- **Reapply on reconnect.** The D200 daemon restores state after a reconnect.
+  For us the equivalent is re-sending the heartbeat plus the haptics and sleep
+  settings from config after every reconnect.
+- **Do not copy:** its web UI (we use native Qt per Omarchy convention), its
+  Ulanzi logo in the desktop icon (trademark; ours is an original SVG), or its
+  `pip install -e .` install path.
+
 ## 11. References
+
+- D200 deck manager (UX ideas only): https://github.com/racerxdl/ulanzi-d200-linux
 
 - Protocol (BLE, TEA, events, settings): https://github.com/kriomant/ulanzi-d100h (copy in `research/`)
 - HID/Studio behaviour, dial viewer idea, specs: https://github.com/brendanwelsh/ulanzi-d100h-homebrew

@@ -12,7 +12,7 @@
 namespace {
 
 const QStringList InternalTypes = {"page", "profile", "haptics", "multi", "noop", "hypr_zoom"};
-const QStringList AllTypes = {"volume", "mic", "brightness", "media", "keys", "text", "hypr", "omarchy",
+const QStringList AllTypes = {"volume", "mic", "brightness", "media", "keys", "omarchy_bind", "text", "hypr", "omarchy",
                               "exec", "url", "shell", "page", "profile", "haptics", "multi", "noop", "hypr_zoom"};
 
 QString str(const QJsonObject &o, const char *key) { return o.value(key).toString(); }
@@ -104,12 +104,14 @@ bool Actions::validate(const QJsonObject &a, QString *error) {
     if (type == "brightness") return oneOf({"up", "down"});
     if (type == "media") return oneOf({"play-pause", "next", "previous", "stop"});
     if (type == "hypr_zoom") return oneOf({"in", "out", "reset"});
+    if (type == "omarchy_bind" || (type == "keys" && a.contains("omarchy"))) {
+        // "keys" + "omarchy" is the v0.1.0 spelling of the same link; it still loads.
+        if ((type == "keys" ? str(a, "omarchy") : str(a, "description")).trimmed().isEmpty())
+            return fail(error, "an Omarchy shortcut link needs a description");
+        return true;
+    }
     if (type == "keys") {
-        if (a.contains("omarchy")) {
-            if (str(a, "omarchy").isEmpty()) return fail(error, "omarchy link needs a description");
-            Combo cached;
-            if (!str(a, "combo").isEmpty() && !Shortcut::parse(str(a, "combo"), &cached, error)) return false;
-        } else {
+        {
             Combo combo;
             QString message;
             if (!Shortcut::parse(str(a, "combo"), &combo, &message)) return fail(error, message);
@@ -152,6 +154,43 @@ bool Actions::validate(const QJsonObject &a, QString *error) {
             if (!validate(item.toObject(), error)) return false;
     }
     return true;
+}
+
+// A command Hyprland would hand to /bin/sh. Plain words run directly, so a failure is
+// reported with its exit code; anything needing a shell goes through Hyprland's own exec.
+static bool needsShell(const QString &command) {
+    static const QString metacharacters = QStringLiteral("$`|&;<>(){}*?!~#'\"\\\n");
+    for (const QChar c : command)
+        if (metacharacters.contains(c)) return true;
+    return false;
+}
+
+QList<Command> Actions::buildOmarchyBind(const OmarchyBind &bind, int steps, QString *error) const {
+    QList<Command> out;
+    steps = qBound(1, steps, 20);
+    auto fail = [&](const QString &message) {
+        if (error) *error = message;
+        return QList<Command>();
+    };
+    if (!bind.runnable)
+        return fail(QStringLiteral("Omarchy shortcut '%1' cannot be run: %2").arg(bind.description, bind.reason));
+    Command command;
+    if (bind.kind == "lua") {
+        if (!m_tools.has("hyprctl")) return fail("hyprctl is not installed");
+        command = {"hyprctl", {"dispatch", bind.arg}, false};
+    } else if (!needsShell(bind.arg)) {
+        const QStringList argv = QProcess::splitCommand(bind.arg);
+        if (argv.isEmpty()) return fail("the shortcut runs an empty command");
+        command = {argv.first(), argv.mid(1), true};
+    } else if (m_tools.has("hyprctl")) {
+        command = {"hyprctl", {"dispatch", QStringLiteral("hl.dsp.exec_cmd(%1)").arg(luaString(bind.arg))}, false};
+    } else if (m_tools.has("sh")) {
+        command = {"sh", {"-c", bind.arg}, true};
+    } else {
+        return fail("neither hyprctl nor sh is available to run the shortcut");
+    }
+    for (int i = 0; i < steps; ++i) out << command;
+    return out;
 }
 
 QList<Command> Actions::build(const QJsonObject &a, int steps, QString *error) const {
@@ -199,21 +238,21 @@ QList<Command> Actions::build(const QJsonObject &a, int steps, QString *error) c
     } else if (type == "media") {
         if (m_tools.has("playerctl")) out << Command{"playerctl", {action}, false};
         else if (require("wtype")) out << Command{"wtype", {"-k", mediaKeysym(action)}, false};
-    } else if (type == "keys") {
-        QString comboText = str(a, "combo");
-        if (a.contains("omarchy")) {
-            comboText = m_resolver ? m_resolver(a) : QString();
-            // The combo cached at bind time is used when the description can no longer be resolved.
-            if (comboText.isEmpty()) comboText = str(a, "combo");
-            if (comboText.isEmpty()) {
-                if (error) *error = QStringLiteral("Omarchy shortcut '%1' not found").arg(str(a, "omarchy"));
-                return out;
-            }
+    } else if (type == "omarchy_bind" || (type == "keys" && a.contains("omarchy"))) {
+        const QString description = type == "keys" ? str(a, "omarchy") : str(a, "description");
+        const OmarchyLookup found = m_resolver ? m_resolver(description, str(a, "combo")) : OmarchyLookup();
+        if (found.status != OmarchyLookup::Status::Found) {
+            if (error) *error = found.message.isEmpty()
+                                    ? QStringLiteral("Omarchy shortcut '%1' not found (it may have been removed from the Hyprland config)").arg(description)
+                                    : found.message;
+            return out;
         }
+        out = buildOmarchyBind(found.bind, steps, error);
+    } else if (type == "keys") {
+        const QString comboText = str(a, "combo");
         Combo combo;
         if (!Shortcut::parse(comboText, &combo, error)) return out;
-        // Omarchy links are delivered through Hyprland so its own binds see them.
-        const QString via = str(a, "via").isEmpty() ? (a.contains("omarchy") ? "hypr" : "wtype") : str(a, "via");
+        const QString via = str(a, "via").isEmpty() ? "wtype" : str(a, "via");
         if (via == "hypr") {
             if (!require("hyprctl")) return out;
             QString window = str(a, "window");

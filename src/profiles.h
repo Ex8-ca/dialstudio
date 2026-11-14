@@ -66,6 +66,7 @@ public:
 
 signals:
     void windowChanged(const QString &windowClass, const QString &title);
+    void configReloaded();   // Hyprland re-read its config, so its binds may have changed
 
 private:
     void connectNow();

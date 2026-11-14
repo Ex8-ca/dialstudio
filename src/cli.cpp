@@ -6,6 +6,7 @@
 #include "config.h"
 #include "daemon.h"
 #include "ipc.h"
+#include "omarchybinds.h"
 #include "shortcut.h"
 
 #include <QCoreApplication>
@@ -41,12 +42,12 @@ const char *Usage = R"(dialstudio %1: Ulanzi D100H controller
 
   dialstudio bind <control> <combo> [--on press|long_press|release] [--profile NAME]
                                     [--page N] [--via wtype|hypr]
-  dialstudio bind <control> --omarchy "Volume up"     link to an existing Hyprland shortcut
+  dialstudio bind <control> --omarchy "Volume up"     run an existing Omarchy shortcut's command
   dialstudio bind <control> --action '{"type":"exec","command":"foot"}'
   dialstudio unbind <control> [--on SLOT] [--profile NAME] [--page N]
   dialstudio bindings [--json] [--profile NAME]
   dialstudio send <combo> [--via wtype|hypr]          fire a shortcut now
-  dialstudio shortcuts [--json] [FILTER]              list Hyprland shortcuts with descriptions
+  dialstudio shortcuts [--json] [FILTER]              list Omarchy shortcuts and whether they can run
   dialstudio learn <control> [--on SLOT]              press a combo on the keyboard to bind it
 
 controls: key1..key7 (press, long_press, release), knob.click, knob.rotate_cw/ccw,
@@ -227,8 +228,9 @@ int cmdBind(const Args &a) {
         if (!doc.isObject()) return fail("--action is not a JSON object: " + e.errorString());
         action = doc.object();
     } else if (a.options.contains("omarchy")) {
-        action = {{"type", "keys"}, {"omarchy", a.options.value("omarchy")}};
-        if (!via.isEmpty()) action.insert("via", via);
+        // A reference by description: the daemon looks the shortcut up in Omarchy's own
+        // config and runs its command (or Hyprland dispatch), never types the keys.
+        action = {{"type", "omarchy_bind"}, {"description", a.options.value("omarchy")}};
     } else {
         if (a.positional.size() != 2) return fail("bind needs a combo, --omarchy \"description\" or --action JSON");
         // Reject typos here too so the message appears even before the daemon is asked.
@@ -290,23 +292,47 @@ int cmdSend(const Args &a) {
 }
 
 int cmdShortcuts(const Args &a) {
-    // Works without the daemon: it only reads Hyprland.
-    QProcess process;
-    process.start("hyprctl", {"-j", "binds"});
-    if (!process.waitForFinished(3000) || process.exitCode() != 0)
-        return fail("could not run `hyprctl -j binds` (is Hyprland running?)");
     const QString filter = a.positional.value(0);
     QJsonArray rows;
-    for (const HyprBind &b : Shortcut::parseHyprBinds(process.readAllStandardOutput())) {
-        if (b.description.isEmpty() || (!filter.isEmpty() && !b.description.contains(filter, Qt::CaseInsensitive))) continue;
-        rows.append(QJsonObject{{"description", b.description}, {"combo", b.combo}, {"usable", b.usable}});
+    int runnable = 0, total = 0;
+    QString warning;
+    // Prefer the daemon's catalog; without it, scan the config here (read only).
+    IpcClient client;
+    if (client.connectTo(Ipc::socketPath(), 300)) {
+        QString error;
+        const QJsonObject reply = client.request({{"op", "shortcuts"}, {"filter", filter}}, 6000, &error);
+        if (reply.value("ok").toBool()) {
+            rows = reply.value("shortcuts").toArray();
+            runnable = reply.value("runnable").toInt();
+            total = reply.value("total").toInt();
+            warning = reply.value("warning").toString();
+        } else if (!reply.isEmpty()) {
+            return fail(reply.value("error").toString());
+        }
+    }
+    if (rows.isEmpty() && total == 0) {
+        QList<OmarchyBind> binds;
+        QString error;
+        if (!OmarchyScan::run(OmarchyScan::defaultConfig(), OmarchyScan::defaultOmarchyPath(), &binds, &error))
+            if (binds.isEmpty()) return fail("could not read the Omarchy shortcuts: " + error);
+        warning = error;
+        OmarchyCatalog catalog;
+        catalog.set(binds);
+        total = binds.size();
+        runnable = catalog.runnableCount();
+        for (const OmarchyBind &b : binds)
+            if (filter.isEmpty() || b.description.contains(filter, Qt::CaseInsensitive) || b.combo().contains(filter, Qt::CaseInsensitive))
+                rows.append(b.toJson());
     }
     if (a.flags.contains("json")) { out << QJsonDocument(rows).toJson(QJsonDocument::Indented); return 0; }
     for (const auto &r : rows) {
         const QJsonObject o = r.toObject();
-        out << o.value("combo").toString().leftJustified(28) << " " << o.value("description").toString()
-            << (o.value("usable").toBool() ? "" : "  (not deliverable)") << "\n";
+        out << o.value("combo").toString().leftJustified(34) << " " << o.value("description").toString().leftJustified(40);
+        if (o.value("runnable").toBool()) out << " " << o.value("runs").toString() << "\n";
+        else out << " (not runnable: " << o.value("reason").toString() << ")\n";
     }
+    errs << rows.size() << " shown, " << runnable << " of " << total << " shortcuts can be run by dialstudio\n";
+    if (!warning.isEmpty()) errs << "warning: " << warning << "\n";
     return 0;
 }
 
@@ -450,6 +476,8 @@ int cmdDaemon(const Args &) {
     Daemon::Options options;
     options.configPath = Config::defaultPath();
     options.socketPath = Ipc::socketPath();
+    options.hyprConfig = OmarchyScan::defaultConfig();
+    options.omarchyPath = OmarchyScan::defaultOmarchyPath();
     Daemon daemon(QDBusConnection::systemBus(), options);
     QString error;
     if (!daemon.start(&error)) return fail(error);

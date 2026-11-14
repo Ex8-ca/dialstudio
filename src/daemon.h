@@ -14,6 +14,7 @@
 #include "config.h"
 #include "inputstate.h"
 #include "ipc.h"
+#include "omarchybinds.h"
 #include "profiles.h"
 
 class Daemon : public QObject {
@@ -27,6 +28,9 @@ public:
         bool toasts = true;
         bool dryRunActions = false;   // tests: never spawn real processes
         QString bluezService = "org.bluez";
+        // Hyprland's Lua config, scanned for Omarchy shortcuts. Empty disables the scan.
+        QString hyprConfig;
+        QString omarchyPath;
     };
 
     Daemon(const QDBusConnection &bus, const Options &options, QObject *parent = nullptr);
@@ -40,6 +44,9 @@ public:
     Config *config() { return &m_config; }
     Profiles *profiles() { return &m_profiles; }
     Actions *actions() { return &m_actions; }
+    OmarchyCatalog *omarchy() { return &m_catalog; }
+    // Rescans the Hyprland config for shortcuts (also done on Hyprland's configreloaded).
+    void refreshShortcuts();
     QJsonObject status() const;
     void handle(const QJsonObject &request, const IpcResponder &respond);
     // Installs SIGINT/SIGTERM handling that calls halt() and emits finished().
@@ -57,8 +64,9 @@ private:
     void publish(const QJsonObject &event);
     void toast(const QString &title, const QString &body);
     void refreshActiveWindow();
-    QJsonArray loadHyprBinds(bool force);
-    QString resolveOmarchy(const QJsonObject &action);
+    OmarchyLookup lookupShortcut(const QString &description, const QString &combo);
+    void ensureCatalog();
+    void onScanFinished(bool ok, const QList<OmarchyBind> &binds, const QString &error);
     void checkLinks();
     QString controlSummary(const QJsonObject &action) const;
 
@@ -66,7 +74,10 @@ private:
     QJsonObject opUnbind(const QJsonObject &request);
     QJsonObject opBindings(const QJsonObject &request) const;
     QJsonObject opSet(const QJsonObject &request, const IpcResponder &respond, bool *deferred);
-    QJsonObject opShortcuts();
+    QJsonObject opShortcuts(const QJsonObject &request);
+    QJsonObject opBindingsGet(const QJsonObject &request) const;
+    QJsonObject opBindingsSet(const QJsonObject &request);
+    QJsonObject opInject(const QJsonObject &request);
     QJsonObject opSend(const QJsonObject &request);
 
     QDBusConnection m_bus;
@@ -93,8 +104,10 @@ private:
     QString m_lastError;
     QString m_configError;
     QStringList m_warnings;
-    QJsonArray m_bindCache;
-    QElapsedTimer m_bindCacheAge;
+    OmarchyCatalog m_catalog;
+    OmarchyScan m_scan;
+    QString m_scanError;
+    bool m_rescanQueued = false;
     bool m_stopping = false;
 
     int m_signalFd[2] = {-1, -1};

@@ -111,6 +111,7 @@ HyprlandWatcher::HyprlandWatcher(QObject *parent) : QObject(parent) {
             m_buffer.remove(0, nl + 1);
             QString c, t;
             if (parseLine(line, &c, &t)) emit windowChanged(c, t);
+            else if (line.startsWith("configreloaded>>")) emit configReloaded();
         }
     });
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] { m_buffer.clear(); m_retry.start(); });

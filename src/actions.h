@@ -10,6 +10,8 @@
 #include <QStringList>
 #include <functional>
 
+#include "omarchybinds.h"
+
 struct Tools {
     QSet<QString> present;
     bool scope = false;     // systemd-run --user --scope works here
@@ -39,8 +41,12 @@ public:
     static QString luaString(const QString &text);
     static Command zoomCommand(double factor);
 
-    // Resolves a keys action carrying an {"omarchy": "<description>"} link to a combo string.
-    void setShortcutResolver(std::function<QString(const QJsonObject &action)> resolver) { m_resolver = std::move(resolver); }
+    // Looks an {"type":"omarchy_bind","description":...} link up in the Omarchy shortcut
+    // catalog. The bind is then run (its command, or its Hyprland dispatch), never typed.
+    using OmarchyResolver = std::function<OmarchyLookup(const QString &description, const QString &combo)>;
+    void setOmarchyResolver(OmarchyResolver resolver) { m_resolver = std::move(resolver); }
+    // The argv that runs one Omarchy bind, or empty with *error set when it cannot run.
+    QList<Command> buildOmarchyBind(const OmarchyBind &bind, int steps, QString *error) const;
     void setTools(const Tools &tools) { m_tools = tools; }
     // Tests: report what would run through ran() instead of spawning anything.
     void setDryRun(bool on) { m_dryRun = on; }
@@ -63,5 +69,5 @@ private:
 
     Tools m_tools;
     bool m_dryRun = false;
-    std::function<QString(const QJsonObject &)> m_resolver;
+    OmarchyResolver m_resolver;
 };

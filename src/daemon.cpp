@@ -31,7 +31,10 @@ Daemon::Daemon(const QDBusConnection &bus, const Options &options, QObject *pare
     : QObject(parent), m_bus(bus), m_options(options), m_config(options.configPath), m_profiles(&m_config),
       m_tools(Tools::detect(options.probeScope)), m_actions(m_tools), m_link(bus, options.bluezService) {
     m_actions.setDryRun(options.dryRunActions);
-    m_actions.setShortcutResolver([this](const QJsonObject &a) { return resolveOmarchy(a); });
+    m_actions.setOmarchyResolver([this](const QString &description, const QString &combo) {
+        return lookupShortcut(description, combo);
+    });
+    connect(&m_scan, &OmarchyScan::finished, this, &Daemon::onScanFinished);
     m_input.setBindingQuery([this](const QString &control, const QString &slot) {
         return m_profiles.hasBinding(control, slot);
     });
@@ -57,7 +60,22 @@ Daemon::Daemon(const QDBusConnection &bus, const Options &options, QObject *pare
     });
 
     connect(&m_input, &InputState::rawEvent, this, [this](const QString &text) {
-        publish({{"event", "input"}, {"text", text}});
+        // The text is what `dialstudio events` prints; the fields are for the GUI.
+        QJsonObject event{{"event", "input"}, {"text", text}};
+        const QStringList parts = text.split(' ');
+        if (parts.size() >= 2 && parts[0].startsWith("key")) {
+            event.insert("control", parts[0]);
+            event.insert("kind", parts[1]);
+        } else if (text == "knob click") {
+            event.insert("control", "knob");
+            event.insert("kind", "click");
+        } else if (parts.size() >= 3 && (parts[0] == "rotate" || parts[0] == "press_rotate")) {
+            event.insert("control", "knob");
+            event.insert("kind", parts[0]);
+            event.insert("direction", parts[1]);
+            event.insert("steps", parts[2].section('=', 1).toInt());
+        }
+        publish(event);
     });
     connect(&m_input, &InputState::fire, this, &Daemon::onFire);
     connect(&m_actions, &Actions::failed, this, [this](const QString &what, const QString &message) {
@@ -78,6 +96,7 @@ Daemon::Daemon(const QDBusConnection &bus, const Options &options, QObject *pare
                  {"page_name", m_profiles.pageName()}});
     });
     connect(&m_hypr, &HyprlandWatcher::windowChanged, &m_profiles, &Profiles::setActiveWindow);
+    connect(&m_hypr, &HyprlandWatcher::configReloaded, this, &Daemon::refreshShortcuts);
 }
 
 Daemon::~Daemon() {
@@ -101,6 +120,7 @@ bool Daemon::start(QString *error) {
 
     m_link.setAddress(m_config.device().value("address").toString());
     m_link.start();
+    refreshShortcuts();
     if (m_options.watchHyprland) {
         m_hypr.start();
         refreshActiveWindow();
@@ -163,7 +183,6 @@ void Daemon::applyInputSettings() {
 void Daemon::onConfigChanged() {
     m_configError.clear();
     applyInputSettings();
-    m_bindCacheAge.invalidate();
     checkLinks();
     const QJsonObject d = m_config.device();
     if (d.contains("haptics") && m_haptics >= 0 && d.value("haptics").toBool() != bool(m_haptics))
@@ -246,8 +265,9 @@ void Daemon::onInternal(const QString &type, const QJsonObject &a) {
 
 QString Daemon::controlSummary(const QJsonObject &a) const {
     const QString type = a.value("type").toString();
+    if (type == "omarchy_bind" || (type == "keys" && a.contains("omarchy")))
+        return QStringLiteral("Omarchy: %1").arg(type == "keys" ? a.value("omarchy").toString() : a.value("description").toString());
     if (type == "keys") {
-        if (a.contains("omarchy")) return QStringLiteral("Omarchy shortcut \"%1\"").arg(a.value("omarchy").toString());
         return a.value("combo").toString() + (a.value("via").toString() == "hypr" ? " (hypr)" : "");
     }
     QStringList parts{type};
@@ -260,57 +280,72 @@ QString Daemon::controlSummary(const QJsonObject &a) const {
 }
 
 // ---------------------------------------------------------------------------
-// Hyprland shortcut links
+// Omarchy shortcut links
+//
+// The catalog comes from scanning Hyprland's Lua config (see omarchybinds.h). A linked
+// control stores the bind's description; every time it fires, the description is looked up
+// again, so a remapped key keeps working and a removed shortcut is reported instead of
+// silently doing nothing.
 
-QJsonArray Daemon::loadHyprBinds(bool force) {
-    if (!force && m_bindCacheAge.isValid() && m_bindCacheAge.elapsed() < 5000) return m_bindCache;
-    QProcess process;
-    process.start("hyprctl", {"-j", "binds"});
-    QJsonArray result;
-    if (process.waitForFinished(2000) && process.exitCode() == 0) {
-        for (const HyprBind &b : Shortcut::parseHyprBinds(process.readAllStandardOutput())) {
-            if (b.description.isEmpty()) continue;
-            result.append(QJsonObject{{"description", b.description}, {"combo", b.combo}, {"usable", b.usable}});
-        }
-        m_bindCache = result;
-        m_bindCacheAge.start();
-    }
-    return m_bindCache;
+void Daemon::refreshShortcuts() {
+    if (m_options.hyprConfig.isEmpty()) return;
+    if (m_scan.running()) { m_rescanQueued = true; return; }
+    m_scan.start(m_options.hyprConfig, m_options.omarchyPath.isEmpty() ? OmarchyScan::defaultOmarchyPath() : m_options.omarchyPath);
 }
 
-QString Daemon::resolveOmarchy(const QJsonObject &action) {
-    const QString wanted = action.value("omarchy").toString();
-    for (const auto &item : loadHyprBinds(false)) {
-        const QJsonObject b = item.toObject();
-        if (b.value("usable").toBool() && b.value("description").toString() == wanted) return b.value("combo").toString();
+void Daemon::onScanFinished(bool ok, const QList<OmarchyBind> &binds, const QString &error) {
+    if (ok || !binds.isEmpty()) {
+        m_catalog.set(binds);
+        m_scanError = ok ? QString() : error;
+    } else {
+        m_scanError = error;
+        qWarning().noquote() << "omarchy shortcut scan failed:" << error;
     }
-    return {};
+    checkLinks();
+    publish({{"event", "shortcuts"}, {"count", int(m_catalog.binds().size())}});
+    if (m_rescanQueued) { m_rescanQueued = false; refreshShortcuts(); }
 }
 
-// Re-resolves every Omarchy link by description: a changed combo is used going
-// forward, and a vanished description is reported in status instead of failing silently.
+// A bind or `shortcuts` call can arrive before the first scan finishes; the scan takes
+// about 30 ms, so waiting for it here is cheaper than answering "not found".
+void Daemon::ensureCatalog() {
+    if (m_catalog.loaded() || m_options.hyprConfig.isEmpty()) return;
+    QList<OmarchyBind> binds;
+    QString error;
+    const bool ok = OmarchyScan::run(m_options.hyprConfig, m_options.omarchyPath.isEmpty() ? OmarchyScan::defaultOmarchyPath() : m_options.omarchyPath,
+                                     &binds, &error, 3000);
+    if (ok || !binds.isEmpty()) m_catalog.set(binds);
+    m_scanError = ok ? QString() : error;
+}
+
+OmarchyLookup Daemon::lookupShortcut(const QString &description, const QString &combo) {
+    ensureCatalog();
+    OmarchyLookup found = m_catalog.find(description, combo);
+    if (found.status == OmarchyLookup::Status::NotFound && !m_scanError.isEmpty() && !m_catalog.loaded())
+        found.message = QStringLiteral("cannot read the Omarchy shortcuts: %1").arg(m_scanError);
+    return found;
+}
+
+// Re-resolves every Omarchy link by description and reports the ones that went away or
+// can no longer run, in `status` and the GUI.
 void Daemon::checkLinks() {
     m_warnings.clear();
-    if (!m_tools.has("hyprctl")) return;
-    bool any = false;
+    if (!m_catalog.loaded()) return;
     for (const auto &p : m_config.profiles())
         for (const auto &pg : p.toObject().value("pages").toArray())
             for (const auto &c : pg.toObject().value("bindings").toObject())
-                for (const auto &s : c.toObject())
-                    any = any || s.toObject().contains("omarchy");
-    if (!any) return;
-    const QJsonArray binds = loadHyprBinds(true);
-    for (const auto &p : m_config.profiles())
-        for (const auto &pg : p.toObject().value("pages").toArray())
-            for (const auto &c : pg.toObject().value("bindings").toObject())
-                for (const auto &s : c.toObject()) {
-                    const QJsonObject a = s.toObject();
-                    if (!a.contains("omarchy")) continue;
-                    bool found = false;
-                    for (const auto &b : binds)
-                        found = found || b.toObject().value("description").toString() == a.value("omarchy").toString();
-                    if (!found)
-                        m_warnings << QStringLiteral("Omarchy shortcut \"%1\" no longer exists in Hyprland").arg(a.value("omarchy").toString());
+                for (auto s = c.toObject().begin(); s != c.toObject().end(); ++s) {
+                    const QJsonObject a = s.value().toObject();
+                    const bool legacy = a.value("type").toString() == "keys" && a.contains("omarchy");
+                    if (a.value("type").toString() != "omarchy_bind" && !legacy) continue;
+                    const QString description = legacy ? a.value("omarchy").toString() : a.value("description").toString();
+                    const OmarchyLookup found = m_catalog.find(description, a.value("combo").toString());
+                    if (found.status == OmarchyLookup::Status::NotFound)
+                        m_warnings << QStringLiteral("Omarchy shortcut \"%1\" no longer exists in the Hyprland config").arg(description);
+                    else if (found.status == OmarchyLookup::Status::Found && !found.bind.runnable)
+                        m_warnings << QStringLiteral("Omarchy shortcut \"%1\" can no longer be run: %2").arg(description, found.bind.reason);
+                    else if (found.status == OmarchyLookup::Status::Ambiguous)
+                        m_warnings << found.message;
                 }
 }
 
@@ -340,6 +375,8 @@ QJsonObject Daemon::status() const {
         {"window", QJsonObject{{"class", m_profiles.windowClass()}, {"title", m_profiles.windowTitle()}}},
         {"config", QJsonObject{{"path", m_config.path()}, {"error", m_configError}}},
         {"warnings", QJsonArray::fromStringList(m_warnings)},
+        {"shortcuts", QJsonObject{{"loaded", m_catalog.loaded()}, {"total", int(m_catalog.binds().size())},
+                                  {"runnable", m_catalog.runnableCount()}, {"error", m_scanError}}},
         {"last_error", m_lastError},
     };
 }
@@ -351,28 +388,15 @@ QJsonObject Daemon::opBind(const QJsonObject &r) {
 
     QJsonObject action = r.value("action").toObject();
     if (action.isEmpty()) return err("bind needs an action");
-    if (action.value("type").toString() == "keys" && action.contains("omarchy")) {
-        // Link to an existing Hyprland bind: resolve now so typos fail at bind time, and
-        // cache the combo so the link still works if the description disappears later.
-        const QString wanted = action.value("omarchy").toString();
-        QString description, combo;
-        int partials = 0;
-        for (const auto &item : loadHyprBinds(true)) {
-            const QJsonObject b = item.toObject();
-            if (!b.value("usable").toBool()) continue;
-            const QString d = b.value("description").toString();
-            if (d == wanted) { description = d; combo = b.value("combo").toString(); partials = 1; break; }
-            if (d.contains(wanted, Qt::CaseInsensitive)) {
-                if (partials++ == 0) { description = d; combo = b.value("combo").toString(); }
-            }
-        }
-        if (description.isEmpty())
-            return err(QStringLiteral("no Hyprland shortcut with a description matching \"%1\" (see: dialstudio shortcuts)").arg(wanted));
-        if (partials > 1)
-            return err(QStringLiteral("\"%1\" matches several shortcuts; use the full description").arg(wanted));
-        action.insert("omarchy", description);
-        action.insert("combo", combo);
-        if (!action.contains("via")) action.insert("via", "hypr");
+    if (action.value("type").toString() == "omarchy_bind" || (action.value("type").toString() == "keys" && action.contains("omarchy"))) {
+        // Resolve now so a typo, an ambiguous name or a bind that cannot be run fails at
+        // bind time with a clear message, not silently when the dial is pressed.
+        const QString wanted = action.contains("omarchy") ? action.value("omarchy").toString() : action.value("description").toString();
+        const OmarchyLookup found = lookupShortcut(wanted, action.value("combo").toString());
+        if (found.status != OmarchyLookup::Status::Found) return err(found.message);
+        if (!found.bind.runnable)
+            return err(QStringLiteral("\"%1\" (%2) cannot be bound: %3").arg(found.bind.description, found.bind.combo(), found.bind.reason));
+        action = QJsonObject{{"type", "omarchy_bind"}, {"description", found.bind.description}, {"combo", found.bind.combo()}};
     }
     const QString profile = r.value("profile").toString().isEmpty() ? m_config.defaultProfileName() : r.value("profile").toString();
     if (!m_config.bind(profile, r.value("page").toInt(0), ref, action, &error)) return err(error);
@@ -421,9 +445,87 @@ QJsonObject Daemon::opBindings(const QJsonObject &r) const {
     return ok({{"bindings", rows}});
 }
 
-QJsonObject Daemon::opShortcuts() {
-    if (!m_tools.has("hyprctl")) return err("hyprctl is not installed");
-    return ok({{"shortcuts", loadHyprBinds(true)}});
+QJsonObject Daemon::opShortcuts(const QJsonObject &r) {
+    if (m_options.hyprConfig.isEmpty()) return err("the Omarchy shortcut scan is disabled");
+    if (r.value("refresh").toBool()) {
+        m_catalog.clear();
+    }
+    ensureCatalog();
+    if (!m_catalog.loaded()) return err(m_scanError.isEmpty() ? QStringLiteral("could not read the Omarchy shortcuts") : m_scanError);
+    const QString filter = r.value("filter").toString();
+    QJsonArray rows;
+    for (const OmarchyBind &b : m_catalog.binds())
+        if (filter.isEmpty() || b.description.contains(filter, Qt::CaseInsensitive) || b.combo().contains(filter, Qt::CaseInsensitive))
+            rows.append(b.toJson());
+    return ok({{"shortcuts", rows}, {"runnable", m_catalog.runnableCount()}, {"total", int(m_catalog.binds().size())},
+               {"warning", m_scanError}});
+}
+
+// The whole bindings object of one page, plus the profile and page lists, so a client can
+// show and edit without parsing the config file itself.
+QJsonObject Daemon::opBindingsGet(const QJsonObject &r) const {
+    QString profile = r.value("profile").toString();
+    if (profile.isEmpty()) profile = m_config.defaultProfileName();
+    const int p = m_config.profileIndex(profile);
+    if (p < 0) return err(QStringLiteral("no profile named '%1'").arg(profile));
+    const QJsonArray pages = m_config.profiles()[p].toObject().value("pages").toArray();
+    const int page = r.value("page").toInt(0);
+    if (page < 0 || page >= pages.size()) return err(QStringLiteral("profile '%1' has no page %2").arg(profile).arg(page));
+    QJsonArray names;
+    for (const auto &pg : pages) names.append(pg.toObject().value("name").toString());
+    return ok({{"profile", profile}, {"page", page}, {"page_names", names},
+               {"bindings", pages[page].toObject().value("bindings").toObject()},
+               {"device", m_config.device()}});
+}
+
+// Replaces one page's bindings in one validated, atomic save. This is how the GUI applies
+// an edit and how undo/redo restores a snapshot.
+QJsonObject Daemon::opBindingsSet(const QJsonObject &r) {
+    QString profile = r.value("profile").toString();
+    if (profile.isEmpty()) profile = m_config.defaultProfileName();
+    const int p = m_config.profileIndex(profile);
+    if (p < 0) return err(QStringLiteral("no profile named '%1'").arg(profile));
+    QJsonArray profileList = m_config.profiles();
+    QJsonObject prof = profileList[p].toObject();
+    QJsonArray pages = prof.value("pages").toArray();
+    const int page = r.value("page").toInt(0);
+    if (page < 0 || page >= pages.size()) return err(QStringLiteral("profile '%1' has no page %2").arg(profile).arg(page));
+    if (!r.value("bindings").isObject()) return err("bindings_set needs a bindings object");
+    QJsonObject pg = pages[page].toObject();
+    pg.insert("bindings", r.value("bindings").toObject());
+    pages[page] = pg;
+    prof.insert("pages", pages);
+    profileList[p] = prof;
+    QJsonObject doc = m_config.doc();
+    doc.insert("profiles", profileList);
+    // Same validation as the config file: a bad slot or action is refused, nothing is written.
+    QString error;
+    QStringList problems;
+    if (!Config::validate(doc, &problems)) return err(problems.join("; "));
+    if (!m_config.replace(doc, &error)) return err(error);
+    return opBindingsGet(r);
+}
+
+// Development hook for tests and screenshots: feeds a decoded dial event into the input
+// pipeline as if it had come from the dial. Off unless DIALSTUDIO_DEV=1 is set for the daemon.
+QJsonObject Daemon::opInject(const QJsonObject &r) {
+    if (qEnvironmentVariable("DIALSTUDIO_DEV") != "1") return err("inject is only available when the daemon runs with DIALSTUDIO_DEV=1");
+    const QString kind = r.value("kind").toString();
+    const int key = r.value("key").toInt();
+    if (kind == "down" || kind == "up") {
+        if (key < 1 || key > 7) return err("key must be 1..7");
+        if (kind == "down") m_input.keyDown(key);
+        else m_input.keyUp(key);
+    } else if (kind == "click") {
+        m_input.knobClick();
+    } else if (kind == "rotate") {
+        const int dir = r.value("direction").toString() == "ccw" ? -1 : 1;
+        for (int i = 0, n = qBound(1, r.value("steps").toInt(1), 20); i < n; ++i)
+            m_input.rotate(dir, r.value("pressed").toBool());
+    } else {
+        return err("inject kind must be down, up, click or rotate");
+    }
+    return ok();
 }
 
 QJsonObject Daemon::opSend(const QJsonObject &r) {
@@ -518,7 +620,10 @@ void Daemon::handle(const QJsonObject &r, const IpcResponder &respond) {
     if (op == "bind") { respond(opBind(r)); return; }
     if (op == "unbind") { respond(opUnbind(r)); return; }
     if (op == "bindings") { respond(opBindings(r)); return; }
-    if (op == "shortcuts") { respond(opShortcuts()); return; }
-    if (op == "send") { respond(opSend(r)); return; }
+    if (op == "shortcuts") { respond(opShortcuts(r)); return; }
+    if (op == "bindings_get") { respond(opBindingsGet(r)); return; }
+    if (op == "bindings_set") { respond(opBindingsSet(r)); return; }
+    if (op == "send" || op == "test") { respond(opSend(r)); return; }
+    if (op == "inject") { respond(opInject(r)); return; }
     respond(err(QStringLiteral("unknown op '%1'").arg(op)));
 }

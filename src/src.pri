@@ -7,6 +7,7 @@ HEADERS += \
     $$PWD/teacodec.h \
     $$PWD/protocol.h \
     $$PWD/shortcut.h \
+    $$PWD/omarchybinds.h \
     $$PWD/actions.h \
     $$PWD/inputstate.h \
     $$PWD/config.h \
@@ -19,6 +20,7 @@ SOURCES += \
     $$PWD/teacodec.cpp \
     $$PWD/protocol.cpp \
     $$PWD/shortcut.cpp \
+    $$PWD/omarchybinds.cpp \
     $$PWD/actions.cpp \
     $$PWD/inputstate.cpp \
     $$PWD/config.cpp \

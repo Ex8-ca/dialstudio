@@ -10,11 +10,13 @@
 #include <QSocketNotifier>
 
 #include "actions.h"
+#include "appscan.h"
 #include "bluezlink.h"
 #include "config.h"
 #include "inputstate.h"
 #include "ipc.h"
 #include "omarchybinds.h"
+#include "presets.h"
 #include "profiles.h"
 
 class Daemon : public QObject {
@@ -31,6 +33,10 @@ public:
         // Hyprland's Lua config, scanned for Omarchy shortcuts. Empty disables the scan.
         QString hyprConfig;
         QString omarchyPath;
+        // Where named profile snapshots live. Empty means the config's directory + /presets.
+        QString presetDir;
+        // .desktop directories for the app picker. Empty means the XDG defaults (tests override).
+        QStringList appsDirs;
     };
 
     Daemon(const QDBusConnection &bus, const Options &options, QObject *parent = nullptr);
@@ -79,6 +85,11 @@ private:
     QJsonObject opBindingsSet(const QJsonObject &request);
     QJsonObject opInject(const QJsonObject &request);
     QJsonObject opSend(const QJsonObject &request);
+    QJsonObject opApps() const;
+    QJsonObject opClients() const;
+    QJsonObject opProfilesGet() const;
+    QJsonObject opProfilesSet(const QJsonObject &request);
+    QJsonObject opPresets(const QJsonObject &request);
 
     QDBusConnection m_bus;
     Options m_options;
@@ -106,6 +117,7 @@ private:
     QStringList m_warnings;
     OmarchyCatalog m_catalog;
     OmarchyScan m_scan;
+    PresetStore m_presets;
     QString m_scanError;
     bool m_rescanQueued = false;
     bool m_stopping = false;

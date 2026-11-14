@@ -25,6 +25,7 @@ class DaemonTests : public QObject {
         std::unique_ptr<Daemon> daemon;
         QString socket;
         QString hyprConfig;      // a copy of the fixture; empty leaves the Omarchy scan off
+        QStringList appsDirs;    // for the apps op; empty uses the XDG defaults
         bool start(const QByteArray &configJson = {}) {
             socket = dir.filePath("s.sock");
             Daemon::Options o;
@@ -36,6 +37,7 @@ class DaemonTests : public QObject {
             o.dryRunActions = true;
             o.hyprConfig = hyprConfig;
             o.omarchyPath = "/nonexistent-omarchy";
+            o.appsDirs = appsDirs;
             if (!configJson.isEmpty()) {
                 QFile f(o.configPath);
                 f.open(QIODevice::WriteOnly);
@@ -514,6 +516,86 @@ private slots:
         const QJsonObject s = r.daemon->status().value("shortcuts").toObject();
         QVERIFY(s.value("loaded").toBool());
         QVERIFY(s.value("total").toInt() > 0);
+    }
+
+    void appsOpScansTheConfiguredDirectories() {
+        Rig r;
+        r.appsDirs = {FIXTURE_DIR "/shell/applications"};
+        QVERIFY(r.start());
+        const QJsonObject reply = r.ask({{"op", "apps"}});
+        QVERIFY(reply.value("ok").toBool());
+        const QJsonArray apps = reply.value("apps").toArray();
+        QCOMPARE(apps.size(), 1);
+        QCOMPARE(apps[0].toObject().value("name").toString(), QString("Foot"));
+        QCOMPARE(apps[0].toObject().value("id").toString(), QString("foot.desktop"));
+    }
+
+    void clientsOpNeedsHyprland() {
+        Rig r;
+        QVERIFY(r.start());
+        const QJsonObject reply = r.ask({{"op", "clients"}});
+        // In the test env either hyprctl is missing or no Hyprland is running; both are errors.
+        QVERIFY(!reply.value("ok").toBool());
+        QVERIFY(reply.value("error").toString().startsWith("hyprctl"));
+    }
+
+    void profilesGetSetValidatesAndPersists() {
+        Rig r;
+        QVERIFY(r.start());
+        const QJsonObject before = r.ask({{"op", "profiles_get"}});
+        QVERIFY(before.value("ok").toBool());
+        QCOMPARE(before.value("profiles").toArray().first().toObject().value("name").toString(), QString("Default"));
+
+        QJsonArray profiles = before.value("profiles").toArray();
+        QJsonObject extra{{"name", "Kdenlive"}, {"match", QJsonObject{{"class", "^org\\.kde\\.kdenlive$"}}},
+                          {"pages", QJsonArray{QJsonObject{{"name", "Editing"}, {"bindings", QJsonObject{}}}}}};
+        profiles.append(extra);
+        QJsonObject saved = r.ask({{"op", "profiles_set"}, {"profiles", profiles}});
+        QVERIFY(saved.value("ok").toBool());
+        QCOMPARE(saved.value("active").toString(), QString("Default"));
+
+        // Missing the fallback profile must be refused, and the stored list must not change.
+        QJsonArray noFallback = before.value("profiles").toArray();
+        QJsonArray withoutFallback;
+        QJsonObject defaultProfile = noFallback[0].toObject();
+        defaultProfile.insert("match", QJsonObject{{"class", "^nothing$"}});
+        withoutFallback.append(defaultProfile);
+        withoutFallback.append(extra);
+        const QJsonObject refused = r.ask({{"op", "profiles_set"}, {"profiles", withoutFallback}});
+        QVERIFY(!refused.value("ok").toBool());
+        QVERIFY(refused.value("error").toString().contains("fallback"));
+        const QJsonObject after = r.ask({{"op", "profiles_get"}});
+        QCOMPARE(after.value("profiles").toArray().size(), 2);
+        QCOMPARE(after.value("profiles").toArray()[0].toObject().value("name").toString(), QString("Default"));
+    }
+
+    void presetsVerbsWorkThroughTheDaemon() {
+        Rig r;
+        QVERIFY(r.start());
+        QCOMPARE(r.ask({{"op", "presets"}, {"verb", "list"}}).value("presets").toArray().size(), 0);
+        QVERIFY(r.ask({{"op", "presets"}, {"verb", "save"}, {"name", "Stock"}}).value("ok").toBool());
+
+        // A second profile gets added, then the preset is applied to remove it again.
+        const QJsonObject before = r.ask({{"op", "profiles_get"}});
+        QJsonObject extraProbe{{"name", "Extra"}, {"match", QJsonObject{{"class", "^x$"}}},
+                               {"pages", QJsonArray{QJsonObject{{"name", "P"}, {"bindings", QJsonObject{}}}}}};
+        QJsonArray probeList = before.value("profiles").toArray();
+        probeList.append(extraProbe);
+        QJsonObject savedExtra = r.ask({{"op", "profiles_set"}, {"profiles", probeList}});
+        QVERIFY2(savedExtra.value("ok").toBool(), qPrintable(savedExtra.value("error").toString()));
+        QCOMPARE(r.ask({{"op", "profiles_get"}}).value("profiles").toArray().size(), 2);
+
+        const QJsonObject applied = r.ask({{"op", "presets"}, {"verb", "apply"}, {"name", "Stock"}});
+        QVERIFY(applied.value("ok").toBool());
+        const QJsonArray after = r.ask({{"op", "profiles_get"}}).value("profiles").toArray();
+        QCOMPARE(after.size(), 1);
+        QCOMPARE(after[0].toObject().value("name").toString(), QString("Default"));
+
+        QVERIFY(r.ask({{"op", "presets"}, {"verb", "save"}, {"name", "Stock"}}).value("ok").toBool() == false);  // exists
+        QVERIFY(r.ask({{"op", "presets"}, {"verb", "rename"}, {"name", "Stock"}, {"to", "Old"}}).value("ok").toBool());
+        QVERIFY(r.ask({{"op", "presets"}, {"verb", "delete"}, {"name", "Old"}}).value("ok").toBool());
+        QCOMPARE(r.ask({{"op", "presets"}, {"verb", "list"}}).value("presets").toArray().size(), 0);
+        QVERIFY(!r.ask({{"op", "presets"}, {"verb", "bogus"}}).value("ok").toBool());
     }
 };
 

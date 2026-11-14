@@ -43,6 +43,9 @@ public:
     int profileIndex(const QString &name) const;
     QString defaultProfileName() const;
 
+    // The profile-list half of validate(), so it can be used for presets and drafts.
+    static bool validateProfiles(const QJsonArray &profiles, QStringList *problems);
+
     // Edits. All validate first, then save, then emit changed().
     bool bind(const QString &profile, int page, const ControlRef &ref, const QJsonObject &action, QString *error);
     bool unbind(const QString &profile, int page, const ControlRef &ref, bool allSlots, QString *error);

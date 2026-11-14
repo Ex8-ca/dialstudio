@@ -8,6 +8,8 @@ HEADERS += \
     $$PWD/protocol.h \
     $$PWD/shortcut.h \
     $$PWD/omarchybinds.h \
+    $$PWD/appscan.h \
+    $$PWD/presets.h \
     $$PWD/actions.h \
     $$PWD/inputstate.h \
     $$PWD/config.h \
@@ -21,6 +23,8 @@ SOURCES += \
     $$PWD/protocol.cpp \
     $$PWD/shortcut.cpp \
     $$PWD/omarchybinds.cpp \
+    $$PWD/appscan.cpp \
+    $$PWD/presets.cpp \
     $$PWD/actions.cpp \
     $$PWD/inputstate.cpp \
     $$PWD/config.cpp \

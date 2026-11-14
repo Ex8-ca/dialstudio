@@ -4,6 +4,7 @@
 #include "shortcut.h"
 
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <csignal>
 #include <sys/socket.h>
@@ -29,7 +30,8 @@ QJsonObject err(const QString &message) { return {{"ok", false}, {"error", messa
 
 Daemon::Daemon(const QDBusConnection &bus, const Options &options, QObject *parent)
     : QObject(parent), m_bus(bus), m_options(options), m_config(options.configPath), m_profiles(&m_config),
-      m_tools(Tools::detect(options.probeScope)), m_actions(m_tools), m_link(bus, options.bluezService) {
+      m_tools(Tools::detect(options.probeScope)), m_actions(m_tools), m_link(bus, options.bluezService),
+      m_presets(options.presetDir.isEmpty() ? QFileInfo(options.configPath).absolutePath() + "/presets" : options.presetDir) {
     m_actions.setDryRun(options.dryRunActions);
     m_actions.setOmarchyResolver([this](const QString &description, const QString &combo, bool loose) {
         return lookupShortcut(description, combo, loose);
@@ -508,6 +510,102 @@ QJsonObject Daemon::opBindingsSet(const QJsonObject &r) {
     return opBindingsGet(r);
 }
 
+// The .desktop app picker: the visible, localized entries the user can launch from a key.
+// Tests override the directories through Options::appsDirs.
+QJsonObject Daemon::opApps() const {
+    const QStringList dirs = m_options.appsDirs.isEmpty() ? AppScan::defaultDirs() : m_options.appsDirs;
+    QStringList desktops = qEnvironmentVariable("XDG_CURRENT_DESKTOP").split(':', Qt::SkipEmptyParts);
+    for (auto &d : desktops) d = d.toUpper();
+    if (desktops.isEmpty()) desktops << "GNOME";
+    QJsonArray rows;
+    for (const AppEntry &app : AppScan::scan(dirs, AppScan::localeCandidates(QLocale::system().name()), desktops))
+        rows.append(app.toJson());
+    return ok({{"apps", rows}, {"dirs", QJsonArray::fromStringList(dirs)}});
+}
+
+// The running windows, for picking a profile's match class from what is open. Synchronous is
+// fine: the GUI asks once when the user opens the picker.
+QJsonObject Daemon::opClients() const {
+    if (!m_tools.has("hyprctl")) return err("hyprctl is not installed");
+    QProcess process;
+    process.start("hyprctl", {"-j", "clients"});
+    if (!process.waitForStarted(3000) || !process.waitForFinished(5000))
+        return err("hyprctl did not answer: is Hyprland running?");
+    if (process.exitCode() != 0) return err("hyprctl failed: " + QString::fromUtf8(process.readAllStandardError()).trimmed());
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(process.readAllStandardOutput(), &parseError);
+    if (!doc.isArray()) return err(QStringLiteral("hyprctl output is not a list (%1)").arg(parseError.errorString()));
+    QJsonArray rows;
+    for (const auto &c : doc.array()) {
+        const QJsonObject w = c.toObject();
+        if (w.value("class").toString().isEmpty()) continue;
+        rows.append(QJsonObject{{"class", w.value("class")}, {"title", w.value("title")},
+                                 {"floating", w.value("floating")}, {"pid", w.value("pid")}});
+    }
+    return ok({{"clients", rows}});
+}
+
+QJsonObject Daemon::opProfilesGet() const {
+    return ok({{"profiles", m_config.profiles()}, {"active", m_profiles.activeName()},
+               {"pinned", m_profiles.pinned()}});
+}
+
+// Replaces the whole profile list in one validated, atomic save (adds, renames, deletes,
+// page edits, match rules). The dial keeps its factory behaviour until the new list is live.
+QJsonObject Daemon::opProfilesSet(const QJsonObject &r) {
+    if (!r.value("profiles").isArray()) return err("profiles_set needs a profiles array");
+    const QJsonArray list = r.value("profiles").toArray();
+    QStringList problems;
+    if (!Config::validateProfiles(list, &problems)) return err(problems.join("; "));
+    QJsonObject doc = m_config.doc();
+    doc.insert("profiles", list);
+    QString error;
+    if (!m_config.replace(doc, &error)) return err(error);
+    return ok({{"profiles", m_config.profiles()}, {"active", m_profiles.activeName()},
+               {"pinned", m_profiles.pinned()}});
+}
+
+// Named profile snapshots. load returns the profiles; apply makes them active in one step.
+QJsonObject Daemon::opPresets(const QJsonObject &r) {
+    const QString verb = r.value("verb").toString();
+    const QString name = r.value("name").toString();
+    QString error;
+    if (verb == "list") {
+        QStringList problems;
+        QJsonArray rows;
+        for (const PresetStore::Info &info : m_presets.list(&problems))
+            rows.append(QJsonObject{{"name", info.name}, {"file", info.file}, {"profiles", info.profiles},
+                                    {"saved", info.saved}});
+        return ok({{"presets", rows}, {"problems", QJsonArray::fromStringList(problems)}, {"directory", m_presets.directory()}});
+    }
+    if (verb == "save") {
+        if (!m_presets.save(name, m_config.profiles(), r.value("overwrite").toBool(), &error)) return err(error);
+        return ok();
+    }
+    if (verb == "load") {
+        QJsonArray profiles;
+        if (!m_presets.load(name, &profiles, &error)) return err(error);
+        return ok({{"profiles", profiles}});
+    }
+    if (verb == "apply") {
+        QJsonArray profiles;
+        if (!m_presets.load(name, &profiles, &error)) return err(error);
+        QJsonObject doc = m_config.doc();
+        doc.insert("profiles", profiles);
+        if (!m_config.replace(doc, &error)) return err(error);
+        return ok({{"profiles", m_config.profiles()}, {"active", m_profiles.activeName()}});
+    }
+    if (verb == "delete") {
+        if (!m_presets.remove(name, &error)) return err(error);
+        return ok();
+    }
+    if (verb == "rename") {
+        if (!m_presets.rename(name, r.value("to").toString(), &error)) return err(error);
+        return ok();
+    }
+    return err(QStringLiteral("presets verb must be list, save, load, apply, delete or rename"));
+}
+
 // Development hook for tests and screenshots: feeds a decoded dial event into the input
 // pipeline as if it had come from the dial. Off unless DIALSTUDIO_DEV=1 is set for the daemon.
 QJsonObject Daemon::opInject(const QJsonObject &r) {
@@ -627,5 +725,10 @@ void Daemon::handle(const QJsonObject &r, const IpcResponder &respond) {
     if (op == "bindings_set") { respond(opBindingsSet(r)); return; }
     if (op == "send" || op == "test") { respond(opSend(r)); return; }
     if (op == "inject") { respond(opInject(r)); return; }
+    if (op == "apps") { respond(opApps()); return; }
+    if (op == "clients") { respond(opClients()); return; }
+    if (op == "profiles_get") { respond(opProfilesGet()); return; }
+    if (op == "profiles_set") { respond(opProfilesSet(r)); return; }
+    if (op == "presets") { respond(opPresets(r)); return; }
     respond(err(QStringLiteral("unknown op '%1'").arg(op)));
 }

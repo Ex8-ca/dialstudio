@@ -133,33 +133,40 @@ bool Config::validate(const QJsonObject &doc, QStringList *errors) {
         !QRegularExpression("^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$").match(device.value("address").toString()).hasMatch())
         problems << "device.address must be a Bluetooth address like CA:62:68:9B:1B:D3 or null";
 
-    const QJsonArray profiles = doc.value("profiles").toArray();
-    if (profiles.isEmpty()) problems << "profiles must not be empty";
+    QJsonArray profiles = doc.value("profiles").toArray();
+    validateProfiles(profiles, &problems);
+    if (errors) *errors = problems;
+    return problems.isEmpty();
+}
+
+bool Config::validateProfiles(const QJsonArray &profiles, QStringList *problems) {
+    QStringList &out = *problems;
+    if (profiles.isEmpty()) { out << "profiles must not be empty"; return false; }
     QSet<QString> names;
     bool fallback = false;
     for (int p = 0; p < profiles.size(); ++p) {
         const QString at = QStringLiteral("profiles[%1]").arg(p);
         const QJsonObject profile = profiles[p].toObject();
         const QString name = profile.value("name").toString();
-        if (name.isEmpty()) problems << at + ".name is missing";
-        else if (names.contains(name)) problems << QStringLiteral("%1.name '%2' is used twice").arg(at, name);
+        if (name.isEmpty()) out << at + ".name is missing";
+        else if (names.contains(name)) out << QStringLiteral("%1.name '%2' is used twice").arg(at, name);
         names.insert(name);
         const QJsonValue match = profile.value("match");
         if (match.isNull() || match.isUndefined()) {
             fallback = true;
         } else if (!match.isObject()) {
-            problems << at + ".match must be null or an object";
+            out << at + ".match must be null or an object";
         } else {
             for (const char *field : {"class", "title"}) {
                 const QString pattern = match.toObject().value(field).toString();
                 if (!pattern.isEmpty() && !QRegularExpression(pattern).isValid())
-                    problems << QStringLiteral("%1.match.%2 is not a valid regular expression").arg(at, field);
+                    out << QStringLiteral("%1.match.%2 is not a valid regular expression").arg(at, field);
             }
             if (match.toObject().value("class").toString().isEmpty() && match.toObject().value("title").toString().isEmpty())
-                problems << at + ".match needs a class or title";
+                out << at + ".match needs a class or title";
         }
         const QJsonArray pages = profile.value("pages").toArray();
-        if (pages.isEmpty()) problems << at + ".pages must not be empty";
+        if (pages.isEmpty()) out << at + ".pages must not be empty";
         for (int g = 0; g < pages.size(); ++g) {
             const QJsonObject bindings = pages[g].toObject().value("bindings").toObject();
             for (auto c = bindings.begin(); c != bindings.end(); ++c) {
@@ -167,15 +174,14 @@ bool Config::validate(const QJsonObject &doc, QStringList *errors) {
                 for (auto s = slotMap.begin(); s != slotMap.end(); ++s) {
                     const QString where = QStringLiteral("%1.pages[%2].bindings.%3.%4").arg(at).arg(g).arg(c.key(), s.key());
                     QString message;
-                    if (!validSlot(c.key(), s.key(), &message)) { problems << where + ": " + message; continue; }
-                    if (!Actions::validate(s.value().toObject(), &message)) problems << where + ": " + message;
+                    if (!validSlot(c.key(), s.key(), &message)) { out << where + ": " + message; continue; }
+                    if (!Actions::validate(s.value().toObject(), &message)) out << where + ": " + message;
                 }
             }
         }
     }
-    if (!profiles.isEmpty() && !fallback) problems << "one profile needs \"match\": null to act as the fallback";
-    if (errors) *errors = problems;
-    return problems.isEmpty();
+    if (!fallback) out << "one profile needs \"match\": null to act as the fallback";
+    return out.isEmpty();
 }
 
 Config::Config(const QString &path, QObject *parent) : QObject(parent), m_path(path) {

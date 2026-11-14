@@ -30,6 +30,21 @@ The dispatcher is a command string, an `hl.dsp.*` expression, a table such as `{
 that the helper turns into a command or `hl.dsp.global(...)`, or a Lua function. The user's
 `bindings.lua` overrides default chords with `hl.unbind` plus `o.bind`.
 
+## v0.1.5 hands-on run with Marc at the dial (2026-11-14)
+
+Throwaway daemon and config; `dialstudio open` on the real Hyprland desktop.
+
+| Check | Result |
+|---|---|
+| Window opens on the real desktop and shows live dial status (online, firmware, battery) | verified |
+| Real key presses light the matching key; knob graphic moves | verified (reported by the user; not independently observed) |
+| Record a combo in the window, bind it to key4 | verified: saved as `keys` `ctrl+shift+F9` |
+| Pick the Omarchy shortcut "Mute microphone" for key5 | verified: saved as `omarchy_bind` |
+| Physical key5 toggles the microphone | reported working by the user; I saw the mic unmuted afterwards |
+| Physical key4 fires the recorded combo | reported working; the combo has no visible effect, so not independently confirmed |
+
+Not yet exercised: Start service button, live theme and language switch.
+
 ## v0.1.0 hardware run on the real dial (2026-11-14, with Marc present)
 
 Run against a throwaway config; the user's real config was not touched.

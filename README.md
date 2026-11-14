@@ -31,15 +31,22 @@ Optional tools, detected at runtime: `playerctl`, `swayosd-client`, `brightnessc
 ## The window
 
 `dialstudio open` (or the launcher entry) shows the dial, a header with the link state, battery,
-firmware and a haptics switch, and an inspector. It is a client of the daemon: it never starts
-one behind your back. With no daemon it shows a banner with a **Start service** button, which
-runs `systemctl --user enable --now dialstudio`.
+firmware, a sleep-timer dropdown and a haptics switch, a profiles pane (toggle with the
+**Profiles** button) and an inspector. It is a client of the daemon: it never starts one behind
+your back. With no daemon it shows a banner with a **Start service** button, which runs
+`systemctl --user enable --now dialstudio`.
 
 - Click a key or the knob, pick the slot (press / long press, or one of the five knob gestures),
   choose an action. A complete action is saved at once through the daemon (atomic write, then hot reload).
 - **Keyboard shortcut**: press **Record**, press the combo on the real keyboard (modifiers show as chips),
   or type it. Super is usually taken by Hyprland before the window sees it, so type those.
 - **Omarchy shortcut**: pick one of Omarchy's own shortcuts from a searchable list. It is run, not typed (see below).
+- **Launch app or command**: pick an installed .desktop application (localized list) or type a command.
+- **Profiles pane**: add, rename and delete profiles; give a profile a window-class regex
+  (type it, or pick a running window from the dropdown); add or remove pages; pin a profile
+  manually. Edits save whole-list in one validated daemon save, so a mistake rolls back the pane.
+- **Presets**: save the current profile list under a name, apply one, delete it
+  (`~/.config/dialstudio/presets/`).
 - **Test** runs the action now through the daemon.
 - Real presses flash the matching key and turning the knob turns its picture. These come from the
   daemon's event stream; the screenshot above is an offscreen render, see `docs/hardware-test.md`

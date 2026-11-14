@@ -68,11 +68,12 @@ Rectangle {
     Flickable {
         anchors.fill: parent
         anchors.margins: 16
+        anchors.bottomMargin: 24
         contentWidth: width
         contentHeight: column.implicitHeight
         clip: true
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
         ColumnLayout {
             id: column
@@ -200,6 +201,7 @@ Rectangle {
                 Label {
                     visible: !!root.draft.type && !backend.draftReady(root.draft)
                     Layout.fillWidth: true
+                    Layout.bottomMargin: 8   // the panel's bottom edge must never cut the note
                     wrapMode: Text.Wrap
                     color: Ui.muted
                     font.pixelSize: 12

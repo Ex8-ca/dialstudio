@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0
+
+- Profiles pane in the window: profile list with the active one marked, add / rename / delete,
+  window-class match rule with a "pick a running window" source (hyprctl clients), pages per
+  profile (add / rename / remove), pin/auto of the active profile. One validated daemon save per
+  edit; a refusal keeps the saved list.
+- Presets: named snapshots of the whole profile list (`~/.config/dialstudio/presets/*.json`) with
+  save / apply / delete in the pane, over the IPC (`presets`) op.
+- The launch action gained an app picker: visible .desktop entries (XDG dirs + Flatpak exports,
+  localized names) store the .desktop id and launch via uwsm-app / gtk-launch.
+- Sleep timer dropdown in the header (never / 1-4 h), reading and writing the dial's own setting.
+- Key captions read "Ctrl+Shift" over a big "Z" instead of three cramped lines; the inspector no
+  longer clips its last row, and pressure rows align with the heading.
+- New IPC ops: `profiles_get`, `profiles_set`, `presets` (list/save/load/apply/delete/rename),
+  `apps`, `clients`; the model re-asks if an early reply races a reconnect.
+- Tests: 225 (`bin/test`), up from 205.
+
 ## 0.1.5
 
 - First window, `dialstudio open`: dial drawing (original SVG) with clickable keys and knob, header

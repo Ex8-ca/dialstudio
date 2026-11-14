@@ -17,6 +17,11 @@ Item {
 
     readonly property color accent: theme.accent
     readonly property real glow: Math.max(lit, down ? 1 : 0)
+    // "Ctrl+Shift+Z" reads better as a small modifier line over a big Z than as three
+    // broken lines on the narrow side keys.
+    readonly property var parts: label.length ? label.split("+") : []
+    readonly property string modifiers: parts.length > 1 ? parts.slice(0, -1).join("+") : ""
+    readonly property string baseKey: parts.length ? parts[parts.length - 1] : ""
 
     function press() { fade.stop(); lit = 1; down = true }
     function release() { down = false; fade.restart() }
@@ -47,20 +52,29 @@ Item {
             opacity: 0.85
         }
         Label {
-            id: caption
+            visible: key.modifiers.length > 0
+            anchors { top: parent.top; topMargin: 18; horizontalCenter: parent.horizontalCenter }
+            width: parent.width - 18
+            horizontalAlignment: Text.AlignHCenter
+            text: key.modifiers
+            elide: Text.ElideRight
+            maximumLineCount: 1
+            font.pixelSize: 9
+            color: key.glow > 0.5 ? theme.accentForeground : Ui.muted
+            opacity: 0.9
+        }
+        Label {
             anchors.centerIn: parent
             width: parent.width - 12
-            height: parent.height - (key.longLabel.length > 0 ? 36 : 28)
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
-            // Lines are broken here, at spaces and (for long chords) after "+", and the font
-            // then shrinks until the widest line fits. Letting the text engine wrap would split
-            // a word such as "Terminal" in the middle on the narrow side keys.
-            text: key.label.length ? key.label.replace(/ /g, "\n").replace(key.label.length > 9 ? /\+/g : /$^/, "+\n") : qsTr("Not bound")
+            // The base key (or phrase, e.g. "Volume up") shrinks until it fits; modifiers sit
+            // in the line above, so nothing is ever broken mid-word.
+            text: key.parts.length > 1 ? key.baseKey : (key.label.length ? key.label : qsTr("Not bound"))
             wrapMode: Text.NoWrap
-            elide: Text.ElideNone
-            font.pixelSize: 14
-            minimumPixelSize: 8
+            elide: Text.ElideRight
+            font.pixelSize: 15
+            minimumPixelSize: 9
             fontSizeMode: Text.Fit
             font.weight: Font.DemiBold
             color: key.glow > 0.5 ? theme.accentForeground : (key.label.length ? Ui.text : Ui.muted)

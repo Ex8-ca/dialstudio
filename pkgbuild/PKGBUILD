@@ -1,6 +1,6 @@
 # Maintainer: Marc <https://github.com/Ex8-ca>
 pkgname=dialstudio
-pkgver=0.1.5
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='Ulanzi D100H dial controller for Omarchy: daemon, window, CLI and shortcut binding'
 arch=('x86_64' 'aarch64')

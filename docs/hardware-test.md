@@ -3,6 +3,33 @@
 Only things that ran on the real dial or the real desktop are marked as verified. Everything else
 is covered by the fake-BlueZ tests only, or not tested.
 
+## v0.1.5 (2026-11-14), window and Omarchy shortcut runner, no one at the dial
+
+Run with a throwaway config and socket; `~/.config/dialstudio`, `~/.config/hypr` and `~/.config/omarchy`
+were not touched. The daemon was stopped afterwards (`pkill -x dialstudio`) and the dial's notify
+characteristic reads `Notifying: false`, so it is back in factory mode.
+
+| Check | Result |
+|---|---|
+| Daemon against the real dial: online, firmware 1.3.8.1, battery 100%, haptics on, sleep 7200 (read only, nothing written) | verified |
+| Window connected to that daemon and showed online / 100% / 1.3.8.1 / 243 runnable shortcuts | verified (offscreen render) |
+| Omarchy catalog from the real config: 249 described binds, 242 runnable, 7 not | verified |
+| `bind --omarchy "Terminal"` stores a reference; unrunnable, ambiguous and unknown names are refused with a reason | verified |
+| `test` of an Omarchy `hl.dsp.global(...)` bind: Hyprland accepted the dispatch (`ok`) | verified once, effect on the notification daemon not observed |
+| Key flash and knob turn in the window | verified with events **injected through the daemon** (`DIALSTUDIO_DEV=1`), not with real presses |
+| Record a combo in the window, undo, redo; the Test button ran a command | verified with synthetic key and mouse events offscreen |
+| A real key press on the dial lighting the window | **not tested** (nobody was at the dial) |
+| `ctrl+shift+z` recorded and then pressed on the dial firing the shortcut (the M1.5 acceptance sentence) | **not tested** end to end |
+| Running an Omarchy bind that spawns an app from a real dial press | **not tested** |
+| `systemctl --user enable --now dialstudio` from the Start service button | **not run**: it would create a unit link in `~/.config/systemd`; the code path is only unit-tested to refuse offline edits |
+| Window under Hyprland on Wayland (not offscreen), theme switch, language switch live | **not tested**; Danish checked once offscreen by language file |
+
+How Omarchy defines its binds: `~/.config/hypr/hyprland.lua` loads `$OMARCHY_PATH/default/hypr/omarchy.lua`
+(`/usr/share/omarchy`), whose `bindings/*.lua` call `o.bind(keys, description, dispatcher)`.
+The dispatcher is a command string, an `hl.dsp.*` expression, a table such as `{ ipc = "media.next" }`
+that the helper turns into a command or `hl.dsp.global(...)`, or a Lua function. The user's
+`bindings.lua` overrides default chords with `hl.unbind` plus `o.bind`.
+
 ## v0.1.0 hardware run on the real dial (2026-11-14, with Marc present)
 
 Run against a throwaway config; the user's real config was not touched.

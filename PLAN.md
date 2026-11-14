@@ -295,6 +295,57 @@ show them in the GUI's status bar.
 | Dial | `multi` [actions…] with delay_ms | internal sequencer |
 | Dial | `noop` | swallow (useful on press_rotate to block fallthrough) |
 
+### 5a. Shortcut binding interface (v0.1, CLI + IPC; GUI recorder in v0.2)
+
+A first-class way to link a dial control to a keyboard shortcut, with no JSON
+editing. The CLI, the GUI and any script all call the same IPC op.
+
+```
+dialstudio bind <control> <combo> [--on press|long_press|release]
+                                  [--profile NAME] [--page N] [--via wtype|hypr]
+dialstudio bind knob.rotate_cw  ctrl+plus          # controls: key1..key7, knob.click,
+dialstudio bind knob.press_rotate_ccw super+shift+left   # knob.rotate_cw/ccw, knob.press_rotate_cw/ccw
+dialstudio bind key4 --omarchy "Terminal"          # link to an EXISTING Hyprland keybind
+dialstudio unbind <control> [--profile ...]
+dialstudio bindings [--json] [--profile ...]       # list current links
+dialstudio send <combo> [--via ...]                # fire a shortcut now (test)
+dialstudio shortcuts [--json]                      # list Omarchy/Hyprland binds (from `hyprctl binds -j`)
+dialstudio learn <control>                         # prompt, then bind whatever combo the user presses
+```
+
+IPC: `{"op":"bind","control":"key4","on":"press","action":{"type":"keys","combo":"ctrl+shift+z"},"profile":"Default","page":0}`
+(also `unbind`, `bindings`, `send`, `shortcuts`). Every successful bind saves
+the config atomically and hot-reloads, so it works while the daemon runs.
+
+Three ways to deliver a shortcut. Each is a `keys` action option (`via`):
+
+1. **`wtype`** (default): synthesises the key press to the focused window.
+   Simplest; works in any app. Combo parser: `ctrl+shift+z`, `super+1`,
+   `alt+Tab`, `XF86AudioMute`. Validate the key names against xkb keysyms at
+   bind time and reject typos with a clear error.
+2. **`hypr`**: `hyprctl dispatch sendshortcut <mods>,<key>,<window>`. Targets
+   a specific window (`class:^firefox$`, or the active one) without needing
+   focus, and does not depend on wtype.
+3. **`omarchy` link** (best for Omarchy's own shortcuts): do NOT inject keys.
+   Read `hyprctl binds -j`, let the user pick an existing bind (the GUI shows
+   them with their descriptions), store its `dispatcher` + `arg`, and run it
+   directly with `hyprctl dispatch <dispatcher> <arg>`. This is reliable (no
+   key-injection edge cases), and it follows the user's own Omarchy keybind
+   changes if re-resolved by key combo at load time (store the combo, resolve
+   the dispatcher on each reload, and warn if the combo no longer exists).
+
+GUI (M2): the inspector's "Keyboard shortcut" action has a **Record** button.
+Click it, press the combo on the real keyboard, and it fills the field
+(Qt `keyPressEvent`, with modifiers shown as chips). Next to it is a **Pick an
+Omarchy shortcut…** searchable list from `shortcuts`. **Test** calls `send`.
+
+Open point to check before relying on it (not yet tested on this machine):
+whether Hyprland fires its own keybinds from `wtype`-injected keys. Hyprland
+generally processes virtual-keyboard input, but verify with a harmless bind
+(e.g. a `notify-send` test bind) in M1. If it doesn't, `hypr`/`omarchy` link
+modes cover it, and the GUI should default Super-containing combos to the
+`omarchy` link.
+
 Plugin extensibility (v0.3): any executable in
 `~/.config/dialstudio/actions/*` that answers `--describe` with JSON
 (`{name, category, params:[…]}`) shows up in the library. It gets invoked with
@@ -387,7 +438,9 @@ in §1). `bin/build`, `bin/test`. Done when `bin/test` is green.
 **M1 / v0.1.0: headless daemon (usable without a GUI).**
 `bluezlink`, `inputstate`, `config` (JSON + hot reload), `actions` (§5 minus
 plugins), `profiles` (static default plus Hyprland class matching), `ipcserver`,
-and the CLI (`daemon`, `status`, `events`, `set`, `profile`, `page`, `doctor`),
+and the CLI (`daemon`, `status`, `events`, `set`, `profile`, `page`, `doctor`,
+plus the §5a shortcut interface: `bind`, `unbind`, `bindings`, `send`,
+`shortcuts`, `learn`),
 plus the systemd unit, PKGBUILD and `install.sh`.
 Acceptance, on the real dial:
 1. `dialstudio events` prints `key1 press`/`release` for each key, `knob click`,

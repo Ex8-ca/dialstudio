@@ -1,0 +1,27 @@
+#!/bin/sh
+# Builds and runs the Qt Test binary offscreen. The binary runs inside a private
+# D-Bus session (dbus-run-session) so the fake-BlueZ tests never touch the real
+# system or session bus, and every test passes temp paths so ~/.config is untouched.
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+mkdir -p "$ROOT/build/tests"
+cd "$ROOT/build/tests"
+
+qmake6 "$ROOT/tests/dialstudio_tests.pro"
+make -j"$(nproc)"
+
+OUT="$ROOT/build/tests/last-run.txt"
+set +e
+if command -v dbus-run-session >/dev/null 2>&1; then
+    DIALSTUDIO_TEST_BUS=1 QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$ROOT/build/tests/xdg" \
+        dbus-run-session -- ./dialstudio_tests "$@" >"$OUT" 2>&1
+else
+    QT_QPA_PLATFORM=offscreen XDG_CONFIG_HOME="$ROOT/build/tests/xdg" ./dialstudio_tests "$@" >"$OUT" 2>&1
+fi
+STATUS=$?
+set -e
+
+cat "$OUT"
+awk '/^Totals:/ { p+=$2; f+=$4; s+=$6 } END { printf "\nSUMMARY: %d passed, %d failed, %d skipped\n", p, f, s }' "$OUT"
+exit $STATUS

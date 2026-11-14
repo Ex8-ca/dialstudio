@@ -1,5 +1,9 @@
 # Ulanzi D100H / Ulanzi Dial BLE protocol
 
+> Adapted from the PROTOCOL.md of [kriomant/ulanzi-d100h](https://github.com/kriomant/ulanzi-d100h)
+> (MIT). All protocol findings are theirs; verification on Linux is noted where it adds to their
+> observations.
+
 Reverse-engineered from macOS PacketLogger captures of Ulanzi Studio communicating with one controller. This document consolidates all observations from the investigation. It describes the **observed BLE protocol**, not a complete manufacturer specification. Unresolved fields and untested behavior are called out explicitly.
 
 ## 1. Device and scope

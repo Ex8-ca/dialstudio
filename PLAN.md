@@ -326,25 +326,31 @@ Three ways to deliver a shortcut. Each is a `keys` action option (`via`):
 2. **`hypr`**: `hyprctl dispatch sendshortcut <mods>,<key>,<window>`. Targets
    a specific window (`class:^firefox$`, or the active one) without needing
    focus, and does not depend on wtype.
-3. **`omarchy` link** (best for Omarchy's own shortcuts): do NOT inject keys.
-   Read `hyprctl binds -j`, let the user pick an existing bind (the GUI shows
-   them with their descriptions), store its `dispatcher` + `arg`, and run it
-   directly with `hyprctl dispatch <dispatcher> <arg>`. This is reliable (no
-   key-injection edge cases), and it follows the user's own Omarchy keybind
-   changes if re-resolved by key combo at load time (store the combo, resolve
-   the dispatcher on each reload, and warn if the combo no longer exists).
+3. **`omarchy` link** (pick from Omarchy's own shortcuts): read
+   `hyprctl binds -j` and let the user pick an existing bind by its
+   `description` (254 of 277 have one, e.g. "Volume up"). **Verified on this
+   machine: every bind reports `dispatcher: "__lua"` with a numeric `arg`
+   (Hyprland 0.56 Lua config), so the dispatcher cannot be recovered and run
+   directly. Do not try.** Instead store the bind's `key` + `modmask` (decode
+   the modmask to names: shift=1, ctrl=4, alt=8, super=64) plus the description,
+   and fire it by delivering that combo with `hyprctl dispatch sendshortcut`
+   (or wtype). On each config reload, re-resolve by description; if the combo
+   changed, use the new one, and if the description is gone, warn in
+   `status`/the GUI.
 
 GUI (M2): the inspector's "Keyboard shortcut" action has a **Record** button.
 Click it, press the combo on the real keyboard, and it fills the field
 (Qt `keyPressEvent`, with modifiers shown as chips). Next to it is a **Pick an
 Omarchy shortcut…** searchable list from `shortcuts`. **Test** calls `send`.
 
-Open point to check before relying on it (not yet tested on this machine):
-whether Hyprland fires its own keybinds from `wtype`-injected keys. Hyprland
-generally processes virtual-keyboard input, but verify with a harmless bind
-(e.g. a `notify-send` test bind) in M1. If it doesn't, `hypr`/`omarchy` link
-modes cover it, and the GUI should default Super-containing combos to the
-`omarchy` link.
+Open point, NOT yet tested: whether Hyprland fires its own keybinds from
+`wtype`-injected keys or from `sendshortcut`. Test both in M1 with a harmless
+bind (e.g. one that runs `notify-send`) before relying on either. If neither
+fires binds, the `omarchy` link mode needs a different route, such as
+resolving the description to the `omarchy-*` command it runs (look in the
+Omarchy bindings config under `~/.local/share/omarchy/` and `~/.config/hypr/`),
+and the plan should be updated with whatever works. Record the result in
+`docs/hardware-test.md`.
 
 Plugin extensibility (v0.3): any executable in
 `~/.config/dialstudio/actions/*` that answers `--describe` with JSON

@@ -5,7 +5,8 @@ post_install() {
 
       systemctl --user enable --now dialstudio
 
-  Then check everything with:  dialstudio doctor
+  Open the window from the app launcher, or with:  dialstudio open
+  Check everything with:  dialstudio doctor
   The dial must already be paired (Omarchy menu > Setup > Bluetooth).
 
 MSG

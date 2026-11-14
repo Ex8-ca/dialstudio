@@ -12,8 +12,8 @@ die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 command -v pacman >/dev/null || die "this installer needs pacman (Arch or Omarchy)"
 [ "$(id -u)" -ne 0 ] || die "run as your normal user; makepkg refuses to run as root"
 
-BUILD_DEPS=(base-devel git qt6-base libxkbcommon)
-RUN_DEPS=(bluez bluez-utils wtype)
+BUILD_DEPS=(base-devel git qt6-base qt6-declarative qt6-svg qt6-wayland libxkbcommon)
+RUN_DEPS=(bluez bluez-utils wtype lua)
 MISSING=()
 for pkg in "${BUILD_DEPS[@]}" "${RUN_DEPS[@]}"; do
   pacman -Qq "$pkg" >/dev/null 2>&1 || MISSING+=("$pkg")

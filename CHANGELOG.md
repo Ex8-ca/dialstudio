@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.5
+
+- First window, `dialstudio open`: dial drawing (original SVG) with clickable keys and knob, header
+  with connection pill, battery, firmware and haptics switch, inspector with an action picker
+  (shortcut, Omarchy shortcut, volume, media, brightness, launch, Hyprland, Omarchy command, shell,
+  nothing), shortcut recorder with modifier chips, Test button, undo/redo, `?` overlay, banner with
+  a Start service button when the daemon is not running. Follows the Omarchy accent, Hyprland
+  rounding and language (Danish catalog).
+- New IPC ops: `bindings_get`, `bindings_set`, `test`, structured `input` events (control, kind,
+  direction, steps), `shortcuts` with a filter, and `inject` (only with `DIALSTUDIO_DEV=1`, for tests).
+- `bind --omarchy` now runs the shortcut's own command or Hyprland dispatch instead of delivering its
+  key combo, which Hyprland ignores. The catalog is read from the Lua config; unrunnable binds are
+  listed as such and refused at bind time. Links are re-resolved by description on every Hyprland
+  config reload, and a missing or no longer runnable one shows in `status`.
+- Config: `{"type":"omarchy_bind","description":...}`. The v0.1.0 spelling
+  `{"type":"keys","omarchy":...}` still loads and runs the command; `bind` upgrades it.
+- Package depends on `qt6-declarative`, `qt6-svg`, `qt6-wayland` and `lua`.
+
 ## 0.1.0
 
 - Headless daemon (`dialstudio daemon`): BlueZ link by UUID (no handles), 1 s heartbeat, reconnect

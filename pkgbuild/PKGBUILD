@@ -1,12 +1,12 @@
 # Maintainer: Marc <https://github.com/Ex8-ca>
 pkgname=dialstudio
-pkgver=0.1.0
+pkgver=0.1.5
 pkgrel=1
-pkgdesc='Ulanzi D100H dial controller for Omarchy: daemon, CLI and shortcut binding'
+pkgdesc='Ulanzi D100H dial controller for Omarchy: daemon, window, CLI and shortcut binding'
 arch=('x86_64' 'aarch64')
 url='https://github.com/Ex8-ca/dialstudio'
 license=('MIT')
-depends=('qt6-base' 'bluez' 'bluez-utils' 'wtype' 'libxkbcommon')
+depends=('qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'bluez' 'bluez-utils' 'wtype' 'libxkbcommon' 'lua')
 makedepends=('gcc' 'make')
 optdepends=('playerctl: media keys without synthesising key presses'
             'swayosd: on-screen display for volume and brightness'

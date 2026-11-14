@@ -326,7 +326,9 @@ Three ways to deliver a shortcut. Each is a `keys` action option (`via`):
 2. **`hypr`**: `hyprctl dispatch sendshortcut <mods>,<key>,<window>`. Targets
    a specific window (`class:^firefox$`, or the active one) without needing
    focus, and does not depend on wtype.
-3. **`omarchy` link** (pick from Omarchy's own shortcuts): read
+3. **`omarchy` link**. SUPERSEDED in v0.1.5: injected keys never fire Hyprland binds (tested), so the
+   link now reads the Lua source and RUNS the bind's command or dispatch. See README, "Shortcut
+   delivery", and CHANGELOG 0.1.5. The text below is the original plan and is kept for history. Read
    `hyprctl binds -j` and let the user pick an existing bind by its
    `description` (254 of 277 have one, e.g. "Volume up"). **Verified on this
    machine: every bind reports `dispatcher: "__lua"` with a numeric `arg`
@@ -459,7 +461,7 @@ Acceptance, on the real dial:
 4. `dialstudio set haptics off` gets read back as off from `status`.
 5. Focusing a window matched by a profile switches bindings; `status` shows it.
 
-**M1.5 / v0.1.5: first window (visual interface early).**
+**M1.5 / v0.1.5: first window (visual interface early). DONE, see CHANGELOG and docs/gui-test.md.**
 Build the GUI skeleton right after the daemon works, so you can see and click
 things before the full editor exists: `Main.qml` with `DialView` (the SVG dial,
 live key flash and knob rotation from the daemon's event stream), the header

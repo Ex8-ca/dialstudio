@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Dial Studio
+Comment=Configure the Ulanzi D100H dial
+Exec=dialstudio open
+Icon=dialstudio
+Terminal=false
+Categories=Utility;
+StartupWMClass=dialstudio

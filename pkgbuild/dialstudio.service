@@ -1,0 +1,15 @@
+[Unit]
+Description=Dial Studio daemon (Ulanzi D100H)
+Documentation=https://github.com/Ex8-ca/dialstudio
+After=graphical-session.target bluetooth.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/dialstudio daemon
+Restart=on-failure
+RestartSec=3
+# Actions spawn the user's own apps, so there is deliberately no ProtectHome/ProtectSystem.
+
+[Install]
+WantedBy=graphical-session.target

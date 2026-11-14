@@ -3,7 +3,10 @@ CONFIG += c++17 testcase
 TARGET = dialstudio_tests
 TEMPLATE = app
 
-INCLUDEPATH += ../src
+INCLUDEPATH += ../src .
 include(../src/src.pri)
 
-SOURCES += dialstudio_tests.cpp
+HEADERS += fakebluez.h testmain.h
+SOURCES += tests_main.cpp fakebluez.cpp \
+    tests_protocol.cpp tests_inputstate.cpp tests_config.cpp tests_actions.cpp \
+    tests_profiles.cpp tests_bluezlink.cpp tests_daemon.cpp

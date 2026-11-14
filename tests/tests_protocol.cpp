@@ -1,4 +1,4 @@
-#include <QtTest>
+#include "testmain.h"
 
 #include "protocol.h"
 #include "teacodec.h"
@@ -182,16 +182,7 @@ private slots:
     }
 };
 
-int runAll(int argc, char **argv) {
-    int status = 0;
-    { CodecTests t; status |= QTest::qExec(&t, argc, argv); }
-    { ProtocolTests t; status |= QTest::qExec(&t, argc, argv); }
-    return status;
-}
+REGISTER_TEST(CodecTests)
+REGISTER_TEST(ProtocolTests)
 
-int main(int argc, char **argv) {
-    QCoreApplication app(argc, argv);
-    return runAll(argc, argv);
-}
-
-#include "dialstudio_tests.moc"
+#include "tests_protocol.moc"
